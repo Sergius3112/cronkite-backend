@@ -3,5 +3,5 @@
 
 cd /Users/christianstapleton/Downloads/factchecker/backend
 source venv/bin/activate
-export GROQ_API_KEY=REMOVED
+export GROQ_API_KEY=$GROQ_API_KEY
 uvicorn main:app --host 127.0.0.1 --port 8000
