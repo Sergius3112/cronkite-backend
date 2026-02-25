@@ -3,6 +3,5 @@ uvicorn
 groq
 tavily-python
 httpx
-newspaper3k
-beautifulsoup4
-lxml
+python-dotenv
+pydantic

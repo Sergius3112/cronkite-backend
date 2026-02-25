@@ -3,13 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from groq import Groq
 from tavily import TavilyClient
-import json, os, httpx
+import json, os
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class AnalyseRequest(BaseModel):
-    text: str = ""
+    text: str
     url: str = ""
 
 class ClaimResult(BaseModel):
@@ -38,53 +38,6 @@ class AnalysisResult(BaseModel):
 async def health():
     return {"status": "ok"}
 
-# --- URL scraping ---
-async def fetch_article_text(url: str) -> str:
-    """Fetch and extract article text from a URL."""
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            html = resp.text
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not fetch URL: {str(e)}")
-
-    # Try newspaper3k first (best for news articles)
-    try:
-        from newspaper import Article
-        article = Article(url)
-        article.set_html(html)
-        article.parse()
-        if article.text and len(article.text) >= 100:
-            return article.text
-    except Exception:
-        pass
-
-    # Fallback: BeautifulSoup extraction
-    try:
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(html, "html.parser")
-        # Remove script, style, nav, header, footer
-        for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form"]):
-            tag.decompose()
-        # Try article tag first
-        article_tag = soup.find("article")
-        if article_tag:
-            paragraphs = article_tag.find_all("p")
-        else:
-            paragraphs = soup.find_all("p")
-        text = "\n".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20)
-        if len(text) >= 100:
-            return text
-    except Exception:
-        pass
-
-    raise HTTPException(status_code=400, detail="Could not extract article text from URL. Try pasting the text directly.")
-
-
 def search_claim(tavily: TavilyClient, claim: str) -> list[dict]:
     results = []
     try:
@@ -101,16 +54,8 @@ def search_claim(tavily: TavilyClient, claim: str) -> list[dict]:
 
 @app.post("/analyse")
 async def analyse(req: AnalyseRequest):
-    # If URL provided but no text, scrape the article
-    article_text = req.text
-    article_url = req.url
-
-    if not article_text and article_url:
-        article_text = await fetch_article_text(article_url)
-
-    if not article_text or len(article_text) < 100:
-        raise HTTPException(status_code=400, detail="Too short. Please provide more text or a valid article URL.")
-
+    if len(req.text) < 100:
+        raise HTTPException(status_code=400, detail="Too short.")
     try:
         groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
         tavily_client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY"))
@@ -121,7 +66,7 @@ async def analyse(req: AnalyseRequest):
             messages=[{"role": "user", "content": (
                 "Extract 4-6 important verifiable factual claims from this article. "
                 "Ignore opinions. Return ONLY a JSON array of short claim strings.\n"
-                f"ARTICLE:\n{article_text[:6000]}\n"
+                f"ARTICLE:\n{req.text[:6000]}\n"
                 'Format: ["Claim 1", "Claim 2"]'
             )}],
             temperature=0.1
@@ -177,8 +122,8 @@ async def analyse(req: AnalyseRequest):
                 "For each claim also assess:\n"
                 "- False conclusions, overgeneralisations, assumptions, missing context\n\n"
 
-                f"ARTICLE URL: {article_url}\n"
-                f"ARTICLE TEXT:\n{article_text[:4000]}\n"
+                f"ARTICLE URL: {req.url}\n"
+                f"ARTICLE TEXT:\n{req.text[:4000]}\n"
                 f"{search_context}\n\n"
 
                 "Return ONLY valid JSON:\n"
