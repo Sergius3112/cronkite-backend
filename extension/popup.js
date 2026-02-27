@@ -6,7 +6,8 @@ const loadingText = document.getElementById('loadingText');
 const errorBox = document.getElementById('errorBox');
 const serverDot = document.getElementById('serverDot');
 const serverStatus = document.getElementById('serverStatus');
-const statusCard = document.querySelector('.status-card');
+const statusCard = document.getElementById('statusCard');
+const statusText = document.getElementById('statusText');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -210,14 +211,13 @@ function extractArticleText() {
 async function initUI() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (isYouTubeUrl(tab.url)) {
-    statusCard.innerHTML = `
-      <div class="status-icon">▶️</div>
-      <div class="status-text">
-        YouTube video detected.<br>
-        The extension will extract captions <strong>directly in your browser</strong>
-        — no server-side YouTube blocking.
-      </div>`;
-    analyzeBtn.textContent = '▶️ Analyse Video';
+    statusCard.classList.add('yt-card');
+    document.querySelector('.status-label').textContent = 'YouTube Detected';
+    statusText.innerHTML =
+      'For YouTube analysis, open <strong>cronkite-edu.html</strong> and paste ' +
+      'this video URL — it fetches captions directly in your browser.' +
+      '<br><br>Or click below to analyse the video here and view results in the sidebar.';
+    analyzeBtn.textContent = 'Analyse YouTube Video';
   }
 }
 
