@@ -106,69 +106,162 @@ def is_instagram_url(url: str) -> bool:
 
 # ── Content extractors ────────────────────────────────────────────────────────
 
-async def extract_youtube_transcript(url: str) -> str:
-    """Extract transcript from a YouTube video using youtube-transcript-api."""
-    try:
-        from youtube_transcript_api import YouTubeTranscriptApi
-        from youtube_transcript_api._errors import (
-            TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
+async def _fetch_youtube_metadata(video_id: str, api_key: str) -> dict:
+    """Fetch video snippet (title, description, tags, channelTitle) via YouTube Data API v3."""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            "https://www.googleapis.com/youtube/v3/videos",
+            params={"id": video_id, "part": "snippet", "key": api_key},
         )
-    except ImportError:
-        raise HTTPException(status_code=500, detail="youtube-transcript-api not installed")
+    resp.raise_for_status()
+    data = resp.json()
+    items = data.get("items", [])
+    if not items:
+        raise ValueError(f"No video found for id={video_id}")
+    return items[0]["snippet"]
 
+
+async def _list_youtube_captions(video_id: str, api_key: str) -> list:
+    """List available caption tracks via YouTube Data API v3 (metadata only — download requires OAuth)."""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            "https://www.googleapis.com/youtube/v3/captions",
+            params={"videoId": video_id, "part": "snippet", "key": api_key},
+        )
+    if resp.status_code == 403:
+        logger.warning(f"captions.list 403 for {video_id} — captions may be disabled or private")
+        return []
+    resp.raise_for_status()
+    return resp.json().get("items", [])
+
+
+async def extract_youtube_transcript(url: str) -> str:
+    """Extract content from a YouTube video.
+
+    Strategy:
+      1. youtube-transcript-api — preferred langs → generated EN → first available
+      2. If all transcript attempts fail and YOUTUBE_API_KEY is set:
+         a. captions.list to log available tracks
+         b. videos.list to fetch title + description + tags for analysis
+    """
     match = re.search(r'(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})', url)
     if not match:
         raise HTTPException(status_code=400, detail="Could not parse YouTube video ID from URL")
 
     video_id = match.group(1)
-    logger.info(f"Fetching YouTube transcript for video_id={video_id}")
+    api_key = os.environ.get("YOUTUBE_API_KEY")
+    logger.info(f"Fetching YouTube content for video_id={video_id}, api_key_set={bool(api_key)}")
 
-    # Use an httpx client with a 30-second timeout passed to the api
-    try:
-        http_client = httpx.Client(timeout=30.0)
-        api = YouTubeTranscriptApi(http_client=http_client)
-    except TypeError:
-        # Older builds may not accept http_client; fall back to default
-        api = YouTubeTranscriptApi()
-
+    # ── Attempt transcript via youtube-transcript-api ─────────────────────────
     entries = None
-
-    # Attempt 1: fetch directly with preferred languages
     try:
-        entries = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
-        logger.info(f"Fetched transcript directly for {video_id}, entries={len(entries)}")
-    except Exception as e1:
-        logger.warning(f"Direct fetch failed for {video_id}: {type(e1).__name__}: {e1}")
+        from youtube_transcript_api import YouTubeTranscriptApi
+    except ImportError:
+        logger.warning("youtube-transcript-api not installed; skipping transcript attempts")
+        YouTubeTranscriptApi = None  # noqa: N806
 
-    # Attempt 2: list all transcripts, prefer generated English
-    if entries is None:
+    if YouTubeTranscriptApi is not None:
         try:
-            transcript_list = api.list(video_id)
-            available = [t.language_code for t in transcript_list]
-            logger.info(f"Available transcripts for {video_id}: {available}")
-            entries = transcript_list.find_generated_transcript(["en"]).fetch()
-            logger.info(f"Fetched generated transcript for {video_id}, entries={len(entries)}")
-        except Exception as e2:
-            logger.warning(f"Generated transcript fetch failed for {video_id}: {type(e2).__name__}: {e2}")
+            http_client = httpx.Client(timeout=30.0)
+            ytt_api = YouTubeTranscriptApi(http_client=http_client)
+        except TypeError:
+            ytt_api = YouTubeTranscriptApi()
 
-    # Attempt 3: take whatever language is available first
-    if entries is None:
+        # Attempt 1: preferred English variants
         try:
-            transcript_list = api.list(video_id)
-            first = next(iter(transcript_list))
-            logger.info(f"Falling back to first available transcript language={first.language_code}")
-            entries = first.fetch()
-        except Exception as e3:
-            logger.error(f"All transcript attempts failed for {video_id}: {type(e3).__name__}: {e3}")
-            raise HTTPException(
-                status_code=400,
-                detail=f"No transcript available for video {video_id}: {type(e3).__name__}: {e3}"
-            )
+            entries = ytt_api.fetch(video_id, languages=["en", "en-US", "en-GB"])
+            logger.info(f"Transcript (preferred langs) fetched for {video_id}: {len(entries)} entries")
+        except Exception as e1:
+            logger.warning(f"Preferred-lang transcript failed for {video_id}: {type(e1).__name__}: {e1}")
 
-    text = " ".join(entry["text"] for entry in entries)
-    logger.info(f"Transcript for {video_id}: {len(text)} chars")
+        # Attempt 2: generated English transcript
+        if entries is None:
+            try:
+                tlist = ytt_api.list(video_id)
+                available = [t.language_code for t in tlist]
+                logger.info(f"Available transcript tracks for {video_id}: {available}")
+                entries = tlist.find_generated_transcript(["en"]).fetch()
+                logger.info(f"Generated EN transcript fetched for {video_id}: {len(entries)} entries")
+            except Exception as e2:
+                logger.warning(f"Generated transcript failed for {video_id}: {type(e2).__name__}: {e2}")
+
+        # Attempt 3: first available language
+        if entries is None:
+            try:
+                tlist = ytt_api.list(video_id)
+                first = next(iter(tlist))
+                logger.info(f"Falling back to first available track: language={first.language_code}")
+                entries = first.fetch()
+                logger.info(f"First-available transcript fetched for {video_id}: {len(entries)} entries")
+            except Exception as e3:
+                logger.warning(f"First-available transcript failed for {video_id}: {type(e3).__name__}: {e3}")
+
+    if entries is not None:
+        text = " ".join(entry["text"] for entry in entries)
+        logger.info(f"Transcript text for {video_id}: {len(text)} chars")
+        if len(text) >= 50:
+            return text
+        logger.warning(f"Transcript too short ({len(text)} chars) for {video_id}, trying metadata fallback")
+
+    # ── Fallback: YouTube Data API v3 metadata ────────────────────────────────
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No transcript available for video {video_id} and YOUTUBE_API_KEY is not set "
+                "— cannot fall back to metadata analysis."
+            ),
+        )
+
+    logger.info(f"Falling back to YouTube Data API v3 metadata for {video_id}")
+
+    # Check what caption tracks exist (metadata only; actual download requires OAuth)
+    try:
+        caption_tracks = await _list_youtube_captions(video_id, api_key)
+        if caption_tracks:
+            track_info = [
+                f"{t['snippet'].get('language','?')} ({t['snippet'].get('trackKind','?')})"
+                for t in caption_tracks
+            ]
+            logger.info(f"Caption tracks available for {video_id}: {track_info}")
+        else:
+            logger.info(f"No caption tracks found for {video_id} via Data API")
+    except Exception as ce:
+        logger.warning(f"captions.list failed for {video_id}: {type(ce).__name__}: {ce}")
+
+    # Fetch video metadata for analysis
+    try:
+        snippet = await _fetch_youtube_metadata(video_id, api_key)
+    except Exception as me:
+        logger.error(f"videos.list failed for {video_id}: {type(me).__name__}: {me}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"No transcript and metadata fetch also failed for {video_id}: {me}",
+        )
+
+    title = snippet.get("title", "")
+    description = snippet.get("description", "")
+    tags = snippet.get("tags", [])
+    channel = snippet.get("channelTitle", "")
+
+    logger.info(f"Metadata fallback for {video_id}: title='{title}', desc_len={len(description)}, tags={len(tags)}")
+
+    parts = [f"Video title: {title}"]
+    if channel:
+        parts.append(f"Channel: {channel}")
+    if description:
+        parts.append(f"Description: {description}")
+    if tags:
+        parts.append(f"Tags: {', '.join(tags)}")
+
+    text = "\n\n".join(parts)
     if len(text) < 50:
-        raise HTTPException(status_code=400, detail="Transcript is empty or too short")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Video {video_id} has no transcript and insufficient metadata for analysis.",
+        )
+
+    logger.info(f"Returning metadata fallback text for {video_id}: {len(text)} chars")
     return text
 
 
