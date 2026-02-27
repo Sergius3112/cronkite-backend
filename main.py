@@ -116,10 +116,12 @@ async def extract_youtube_transcript(url: str) -> str:
 
     video_id = match.group(1)
     try:
-        entries = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "en-US", "en-GB"])
+        api = YouTubeTranscriptApi()
+        entries = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
     except Exception:
         try:
-            transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+            api = YouTubeTranscriptApi()
+            transcripts = api.list(video_id)
             entries = transcripts.find_generated_transcript(["en"]).fetch()
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"No transcript available for this video: {e}")
