@@ -283,32 +283,32 @@
     // uses as its own fallback. Requests come from the user's browser, not a server,
     // so YouTube's datacenter-IP blocking does not apply.
 
-    // Identical to popup.js — parses YouTube's JSON3 caption format into plain text.
-    function parseJson3Transcript(data) {
-      const events = data?.events || [];
-      return events
-        .filter(e => e.segs)
-        .map(e => e.segs.map(s => (s.utf8 || '').replace(/\n/g, ' ')).join(''))
+    // Parses the XML returned by YouTube's timedtext API into plain text.
+    // DOMParser handles HTML entity decoding (&amp; &#39; etc.) automatically.
+    function parseXmlTranscript(xmlText) {
+      const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+      return Array.from(doc.querySelectorAll('text'))
+        .map(el => el.textContent.trim())
+        .filter(Boolean)
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim();
     }
 
     async function fetchYouTubeTranscript(videoId) {
-      // Try the same language variants the extension targets, plus auto-generated (asr).
+      const base = `https://www.youtube.com/api/timedtext?v=${videoId}`;
       const attempts = [
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&fmt=json3`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr&fmt=json3`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&fmt=json3`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-GB&fmt=json3`,
+        `${base}&lang=en`,
+        `${base}&lang=en-GB`,
+        `${base}&kind=asr&lang=en`,
+        `${base}&kind=asr&lang=en-GB`,
       ];
 
       for (const url of attempts) {
         try {
           const resp = await fetch(url);
           if (!resp.ok) continue;
-          const data = await resp.json();
-          const text = parseJson3Transcript(data);
+          const text = parseXmlTranscript(await resp.text());
           if (text && text.length >= 50) return text;
         } catch {
           continue;
