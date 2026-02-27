@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cronkite Fact-Checker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px;
+    }
+
+    .container { width: 100%; max-width: 680px; }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+
+    header p { font-size: 1rem; color: #718096; }
+
+    .card {
+      background: #1a1f2e;
+      border: 1px solid #2d3748;
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #a0aec0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 10px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    input[type="url"], textarea {
+      flex: 1;
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 10px;
+      padding: 12px 16px;
+      color: #e2e8f0;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input[type="url"]:focus, textarea:focus {
+      border-color: #667eea;
+    }
+
+    textarea { width: 100%; resize: vertical; min-height: 120px; margin-top: 12px; }
+
+    .btn {
+      padding: 12px 20px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ── YouTube notice ─────────────────────────────────────────────────── */
+    .yt-notice {
+      display: none;
+      background: #1a1a2e;
+      border: 1px solid #4a3f6b;
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-top: 14px;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .yt-notice.visible { display: flex; }
+
+    .yt-icon { font-size: 28px; flex-shrink: 0; margin-top: 2px; }
+
+    .yt-notice-body h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #c084fc;
+      margin-bottom: 6px;
+    }
+
+    .yt-notice-body p {
+      font-size: 13px;
+      color: #a0aec0;
+      line-height: 1.6;
+    }
+
+    .yt-notice-body a {
+      color: #818cf8;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    /* ── Results ────────────────────────────────────────────────────────── */
+    #results { display: none; }
+
+    .verdict-badge {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .verdict-badge.true    { background: #1a3a2a; color: #68d391; border: 1px solid #276749; }
+    .verdict-badge.false   { background: #3a1a1a; color: #fc8181; border: 1px solid #742a2a; }
+    .verdict-badge.mixed   { background: #3a2e1a; color: #f6ad55; border: 1px solid #744210; }
+    .verdict-badge.unknown { background: #1a1f2e; color: #a0aec0; border: 1px solid #2d3748; }
+
+    .score-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .score-pill {
+      flex: 1;
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .score-pill .value { font-size: 1.6rem; font-weight: 800; color: #667eea; }
+    .score-pill .label { font-size: 11px; color: #718096; margin-top: 2px; }
+
+    .summary { font-size: 14px; color: #cbd5e0; line-height: 1.7; margin-bottom: 20px; }
+
+    .claims-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+    .claim-item {
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .claim-item .claim-text { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .claim-item .claim-verdict { font-size: 12px; color: #718096; }
+
+    /* ── Loading / error ────────────────────────────────────────────────── */
+    .spinner-wrap { text-align: center; padding: 24px; display: none; }
+
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid #2d3748;
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .spinner-text { font-size: 13px; color: #718096; }
+
+    .error-box {
+      display: none;
+      background: #2d1b1b;
+      border: 1px solid #742a2a;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 13px;
+      color: #fc8181;
+      line-height: 1.5;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Cronkite Fact-Checker</h1>
+      <p>AI-powered analysis for news articles and web content</p>
+    </header>
+
+    <!-- Input card -->
+    <div class="card">
+      <label>Article or page URL</label>
+      <div class="input-row">
+        <input type="url" id="urlInput" placeholder="https://example.com/article" />
+        <button class="btn" id="fetchBtn">Fetch &amp; Analyse</button>
+      </div>
+
+      <!-- YouTube notice — shown when a YouTube URL is detected -->
+      <div class="yt-notice" id="ytNotice">
+        <div class="yt-icon">▶️</div>
+        <div class="yt-notice-body">
+          <h3>YouTube URL detected</h3>
+          <p>
+            This web app cannot analyse YouTube videos directly due to server-side caption restrictions.
+            For YouTube analysis, please use the
+            <a id="extLink" href="#">Cronkite Chrome Extension</a>
+            — it extracts captions directly in your browser, bypassing the restriction.
+          </p>
+          <p style="margin-top: 8px;">
+            Alternatively, paste the video transcript as text below and click
+            <strong>Analyse text directly</strong>.
+          </p>
+        </div>
+      </div>
+
+      <!-- Fallback: paste raw text -->
+      <textarea id="textInput" placeholder="Or paste article / transcript text here..."></textarea>
+      <div style="margin-top: 10px;">
+        <button class="btn" id="analyseTextBtn" style="width:100%;">Analyse text directly</button>
+      </div>
+
+      <div class="spinner-wrap" id="spinner">
+        <div class="spinner"></div>
+        <div class="spinner-text" id="spinnerText">Analysing…</div>
+      </div>
+
+      <div class="error-box" id="errorBox"></div>
+    </div>
+
+    <!-- Results card -->
+    <div class="card" id="results">
+      <div id="verdictBadge" class="verdict-badge"></div>
+      <div class="score-row">
+        <div class="score-pill">
+          <div class="value" id="factScore">–</div>
+          <div class="label">Accuracy score</div>
+        </div>
+        <div class="score-pill">
+          <div class="value" id="biasScore">–</div>
+          <div class="label">Bias score</div>
+        </div>
+      </div>
+      <p class="summary" id="summary"></p>
+      <ul class="claims-list" id="claimsList"></ul>
+    </div>
+  </div>
+
+  <script>
+    const BACKEND = 'https://cronkite-backend-production.up.railway.app';
+
+    const urlInput       = document.getElementById('urlInput');
+    const textInput      = document.getElementById('textInput');
+    const fetchBtn       = document.getElementById('fetchBtn');
+    const analyseTextBtn = document.getElementById('analyseTextBtn');
+    const ytNotice       = document.getElementById('ytNotice');
+    const spinner        = document.getElementById('spinner');
+    const spinnerText    = document.getElementById('spinnerText');
+    const errorBox       = document.getElementById('errorBox');
+    const results        = document.getElementById('results');
+
+    function isYouTube(url) {
+      return /youtube\.com\/watch|youtu\.be\//.test(url);
+    }
+
+    // Show/hide YouTube notice as user types
+    urlInput.addEventListener('input', () => {
+      if (isYouTube(urlInput.value.trim())) {
+        ytNotice.classList.add('visible');
+        fetchBtn.disabled = true;
+        fetchBtn.title = 'YouTube URLs must be analysed via the Chrome Extension';
+      } else {
+        ytNotice.classList.remove('visible');
+        fetchBtn.disabled = false;
+        fetchBtn.title = '';
+      }
+    });
+
+    function showSpinner(text) {
+      spinner.style.display = 'block';
+      spinnerText.textContent = text || 'Analysing…';
+      errorBox.style.display = 'none';
+      results.style.display = 'none';
+      fetchBtn.disabled = true;
+      analyseTextBtn.disabled = true;
+    }
+
+    function hideSpinner() {
+      spinner.style.display = 'none';
+      fetchBtn.disabled = isYouTube(urlInput.value.trim());
+      analyseTextBtn.disabled = false;
+    }
+
+    function showError(msg) {
+      errorBox.style.display = 'block';
+      errorBox.textContent = '⚠️ ' + msg;
+      hideSpinner();
+    }
+
+    function renderResults(data) {
+      const verdictEl = document.getElementById('verdictBadge');
+      verdictEl.textContent = data.verdict || 'Unknown';
+      const vClass = (data.verdict || '').toLowerCase().replace(/\s+/g, '-');
+      verdictEl.className = 'verdict-badge ' + (['true', 'false', 'mixed'].includes(vClass) ? vClass : 'unknown');
+
+      document.getElementById('factScore').textContent = data.overall_score ?? '–';
+      document.getElementById('biasScore').textContent = data.bias_score ?? '–';
+      document.getElementById('summary').textContent = data.summary || '';
+
+      const list = document.getElementById('claimsList');
+      list.innerHTML = '';
+      (data.claims || []).forEach(c => {
+        const li = document.createElement('li');
+        li.className = 'claim-item';
+        li.innerHTML = `<div class="claim-text">${c.claim}</div><div class="claim-verdict">${c.verdict} — ${c.explanation}</div>`;
+        list.appendChild(li);
+      });
+
+      results.style.display = 'block';
+      hideSpinner();
+    }
+
+    async function analyse(text, url) {
+      showSpinner('Sending to fact-checker (20–40s)…');
+      try {
+        const resp = await fetch(`${BACKEND}/analyse`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, url: url || '' })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.detail || `Server error ${resp.status}`);
+        }
+        renderResults(await resp.json());
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    // Fetch URL → scrape on backend → analyse
+    fetchBtn.addEventListener('click', async () => {
+      const url = urlInput.value.trim();
+      if (!url) { showError('Please enter a URL.'); return; }
+      if (isYouTube(url)) { showError('YouTube URLs require the Chrome Extension.'); return; }
+
+      showSpinner('Fetching article…');
+      try {
+        const resp = await fetch(`${BACKEND}/fetch-article`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.detail || `Could not fetch article (${resp.status})`);
+        }
+        const { text } = await resp.json();
+        await analyse(text, url);
+      } catch (e) {
+        showError(e.message);
+      }
+    });
+
+    // Analyse pasted text directly
+    analyseTextBtn.addEventListener('click', async () => {
+      const text = textInput.value.trim();
+      if (text.length < 100) { showError('Please paste at least 100 characters of text.'); return; }
+      await analyse(text, urlInput.value.trim() || '');
+    });
+  </script>
+</body>
+</html>
