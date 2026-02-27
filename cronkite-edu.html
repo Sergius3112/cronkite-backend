@@ -95,40 +95,30 @@
     .btn:active { transform: translateY(0); }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
-    /* ── YouTube notice ─────────────────────────────────────────────────── */
-    .yt-notice {
+    /* ── YouTube action ─────────────────────────────────────────────────── */
+    .yt-action {
       display: none;
-      background: #1a1a2e;
-      border: 1px solid #4a3f6b;
-      border-radius: 12px;
-      padding: 18px 20px;
-      margin-top: 14px;
-      gap: 14px;
-      align-items: flex-start;
+      margin-top: 12px;
     }
 
-    .yt-notice.visible { display: flex; }
+    .yt-action.visible { display: block; }
 
-    .yt-icon { font-size: 28px; flex-shrink: 0; margin-top: 2px; }
-
-    .yt-notice-body h3 {
+    .btn-yt {
+      width: 100%;
+      padding: 12px 20px;
+      background: linear-gradient(135deg, #ff0000, #cc0000);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
       font-size: 14px;
-      font-weight: 700;
-      color: #c084fc;
-      margin-bottom: 6px;
-    }
-
-    .yt-notice-body p {
-      font-size: 13px;
-      color: #a0aec0;
-      line-height: 1.6;
-    }
-
-    .yt-notice-body a {
-      color: #818cf8;
-      text-decoration: underline;
+      font-weight: 600;
       cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
     }
+
+    .btn-yt:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-yt:active { transform: translateY(0); }
+    .btn-yt:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
     /* ── Results ────────────────────────────────────────────────────────── */
     #results { display: none; }
@@ -217,28 +207,15 @@
 
     <!-- Input card -->
     <div class="card">
-      <label>Article or page URL</label>
+      <label>Article URL or YouTube video URL</label>
       <div class="input-row">
-        <input type="url" id="urlInput" placeholder="https://example.com/article" />
+        <input type="url" id="urlInput" placeholder="https://example.com/article  or  youtube.com/watch?v=..." />
         <button class="btn" id="fetchBtn">Fetch &amp; Analyse</button>
       </div>
 
-      <!-- YouTube notice — shown when a YouTube URL is detected -->
-      <div class="yt-notice" id="ytNotice">
-        <div class="yt-icon">▶️</div>
-        <div class="yt-notice-body">
-          <h3>YouTube URL detected</h3>
-          <p>
-            This web app cannot analyse YouTube videos directly due to server-side caption restrictions.
-            For YouTube analysis, please use the
-            <a id="extLink" href="#">Cronkite Chrome Extension</a>
-            — it extracts captions directly in your browser, bypassing the restriction.
-          </p>
-          <p style="margin-top: 8px;">
-            Alternatively, paste the video transcript as text below and click
-            <strong>Analyse text directly</strong>.
-          </p>
-        </div>
+      <!-- YouTube action — shown when a YouTube URL is detected -->
+      <div class="yt-action" id="ytAction">
+        <button class="btn-yt" id="ytBtn">▶️ Fetch YouTube Captions &amp; Analyse</button>
       </div>
 
       <!-- Fallback: paste raw text -->
@@ -279,28 +256,77 @@
     const urlInput       = document.getElementById('urlInput');
     const textInput      = document.getElementById('textInput');
     const fetchBtn       = document.getElementById('fetchBtn');
+    const ytBtn          = document.getElementById('ytBtn');
+    const ytAction       = document.getElementById('ytAction');
     const analyseTextBtn = document.getElementById('analyseTextBtn');
-    const ytNotice       = document.getElementById('ytNotice');
     const spinner        = document.getElementById('spinner');
     const spinnerText    = document.getElementById('spinnerText');
     const errorBox       = document.getElementById('errorBox');
     const results        = document.getElementById('results');
 
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
     function isYouTube(url) {
       return /youtube\.com\/watch|youtu\.be\//.test(url);
     }
 
-    // Show/hide YouTube notice as user types
-    urlInput.addEventListener('input', () => {
-      if (isYouTube(urlInput.value.trim())) {
-        ytNotice.classList.add('visible');
-        fetchBtn.disabled = true;
-        fetchBtn.title = 'YouTube URLs must be analysed via the Chrome Extension';
-      } else {
-        ytNotice.classList.remove('visible');
-        fetchBtn.disabled = false;
-        fetchBtn.title = '';
+    function extractVideoId(url) {
+      const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      return m ? m[1] : null;
+    }
+
+    // ── YouTube caption fetching (browser-side, mirrors extension/popup.js) ────
+    //
+    // The extension reads ytInitialPlayerResponse via chrome.scripting.executeScript
+    // to get the exact caption track URL. That API is unavailable in a web page, so
+    // we go straight to YouTube's timedtext endpoint — the same path the extension
+    // uses as its own fallback. Requests come from the user's browser, not a server,
+    // so YouTube's datacenter-IP blocking does not apply.
+
+    // Identical to popup.js — parses YouTube's JSON3 caption format into plain text.
+    function parseJson3Transcript(data) {
+      const events = data?.events || [];
+      return events
+        .filter(e => e.segs)
+        .map(e => e.segs.map(s => (s.utf8 || '').replace(/\n/g, ' ')).join(''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    async function fetchYouTubeTranscript(videoId) {
+      // Try the same language variants the extension targets, plus auto-generated (asr).
+      const attempts = [
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&fmt=json3`,
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr&fmt=json3`,
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&fmt=json3`,
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-GB&fmt=json3`,
+      ];
+
+      for (const url of attempts) {
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          const text = parseJson3Transcript(data);
+          if (text && text.length >= 50) return text;
+        } catch {
+          continue;
+        }
       }
+
+      throw new Error(
+        'No captions found for this video. Captions may be disabled or unavailable. ' +
+        'Try pasting the transcript into the text box below.'
+      );
+    }
+
+    // ── UI state ───────────────────────────────────────────────────────────────
+
+    urlInput.addEventListener('input', () => {
+      const yt = isYouTube(urlInput.value.trim());
+      ytAction.classList.toggle('visible', yt);
+      fetchBtn.style.display = yt ? 'none' : '';
     });
 
     function showSpinner(text) {
@@ -309,12 +335,14 @@
       errorBox.style.display = 'none';
       results.style.display = 'none';
       fetchBtn.disabled = true;
+      ytBtn.disabled = true;
       analyseTextBtn.disabled = true;
     }
 
     function hideSpinner() {
       spinner.style.display = 'none';
-      fetchBtn.disabled = isYouTube(urlInput.value.trim());
+      fetchBtn.disabled = false;
+      ytBtn.disabled = false;
       analyseTextBtn.disabled = false;
     }
 
@@ -365,11 +393,12 @@
       }
     }
 
-    // Fetch URL → scrape on backend → analyse
+    // ── Button handlers ────────────────────────────────────────────────────────
+
+    // Article URLs — fetch text on backend then analyse
     fetchBtn.addEventListener('click', async () => {
       const url = urlInput.value.trim();
       if (!url) { showError('Please enter a URL.'); return; }
-      if (isYouTube(url)) { showError('YouTube URLs require the Chrome Extension.'); return; }
 
       showSpinner('Fetching article…');
       try {
@@ -389,7 +418,23 @@
       }
     });
 
-    // Analyse pasted text directly
+    // YouTube URLs — fetch captions directly in the browser then analyse
+    ytBtn.addEventListener('click', async () => {
+      const url = urlInput.value.trim();
+      const videoId = extractVideoId(url);
+      if (!videoId) { showError('Could not parse a YouTube video ID from this URL.'); return; }
+
+      showSpinner('Fetching YouTube captions in browser…');
+      try {
+        const transcript = await fetchYouTubeTranscript(videoId);
+        showSpinner(`Got transcript (${transcript.length} chars). Sending to fact-checker…`);
+        await analyse(transcript, url);
+      } catch (e) {
+        showError(e.message);
+      }
+    });
+
+    // Pasted text — analyse directly
     analyseTextBtn.addEventListener('click', async () => {
       const text = textInput.value.trim();
       if (text.length < 100) { showError('Please paste at least 100 characters of text.'); return; }
