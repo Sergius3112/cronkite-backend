@@ -6,3 +6,6 @@ httpx
 newspaper3k
 beautifulsoup4
 lxml
+supabase
+youtube-transcript-api
+python-jose[cryptography]

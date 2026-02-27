@@ -1,12 +1,46 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from groq import Groq
 from tavily import TavilyClient
-import json, os, httpx
+import json, os, re, httpx
+from typing import Optional
+from jose import jwt
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+# ── Supabase client (lazy init) ───────────────────────────────────────────────
+
+def get_supabase():
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    if not url or not key:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    from supabase import create_client
+    return create_client(url, key)
+
+
+# ── Auth dependency ───────────────────────────────────────────────────────────
+
+def get_current_user(authorization: str = Header(None)) -> dict:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    token = authorization.split(" ")[1]
+    try:
+        payload = jwt.decode(
+            token,
+            os.environ.get("SUPABASE_JWT_SECRET", ""),
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+        return payload
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+# ── Pydantic models ───────────────────────────────────────────────────────────
 
 class AnalyseRequest(BaseModel):
     text: str = ""
@@ -34,13 +68,177 @@ class AnalysisResult(BaseModel):
     bias_summary: str = ""
     language_flags: list[LanguageFlag] = []
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+class ModuleCreate(BaseModel):
+    title: str
+    description: str = ""
+    focus_point: str = ""
 
-# --- URL scraping ---
+class AssignmentCreate(BaseModel):
+    module_id: str
+    article_url: str
+    article_title: str = ""
+
+class StudentResultCreate(BaseModel):
+    assignment_id: str
+    analysis_json: dict
+
+
+# ── URL type detection ────────────────────────────────────────────────────────
+
+def is_youtube_url(url: str) -> bool:
+    return bool(re.search(r'(youtube\.com/watch|youtu\.be/)', url))
+
+def is_twitter_url(url: str) -> bool:
+    return bool(re.search(r'(twitter\.com|x\.com)/\w+/status/', url))
+
+def is_tiktok_url(url: str) -> bool:
+    return "tiktok.com" in url
+
+def is_reddit_url(url: str) -> bool:
+    return "reddit.com/r/" in url
+
+def is_instagram_url(url: str) -> bool:
+    return "instagram.com" in url
+
+
+# ── Content extractors ────────────────────────────────────────────────────────
+
+async def extract_youtube_transcript(url: str) -> str:
+    """Extract transcript from a YouTube video using youtube-transcript-api."""
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+    except ImportError:
+        raise HTTPException(status_code=500, detail="youtube-transcript-api not installed")
+
+    match = re.search(r'(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})', url)
+    if not match:
+        raise HTTPException(status_code=400, detail="Could not parse YouTube video ID from URL")
+
+    video_id = match.group(1)
+    try:
+        entries = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "en-US", "en-GB"])
+    except Exception:
+        try:
+            transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+            entries = transcripts.find_generated_transcript(["en"]).fetch()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"No transcript available for this video: {e}")
+
+    text = " ".join(entry["text"] for entry in entries)
+    if len(text) < 50:
+        raise HTTPException(status_code=400, detail="Transcript is empty or too short")
+    return text
+
+
+async def extract_twitter_text(url: str) -> str:
+    """Extract tweet text via the oEmbed endpoint (no auth required)."""
+    oembed_url = f"https://publish.twitter.com/oembed?url={url}&omit_script=true"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(oembed_url)
+            resp.raise_for_status()
+            data = resp.json()
+        html = data.get("html", "")
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        p_tag = soup.find("p")
+        tweet_text = p_tag.get_text(separator=" ", strip=True) if p_tag else ""
+        author = data.get("author_name", "")
+        if not tweet_text:
+            raise HTTPException(status_code=400, detail="Could not extract tweet text")
+        return f"{author}: {tweet_text}" if author else tweet_text
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not fetch tweet: {e}")
+
+
+async def extract_tiktok_text(url: str) -> str:
+    """Extract TikTok video caption via oEmbed endpoint (no auth required)."""
+    oembed_url = f"https://www.tiktok.com/oembed?url={url}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            resp = await client.get(oembed_url)
+            resp.raise_for_status()
+            data = resp.json()
+        title = data.get("title", "")
+        author = data.get("author_name", "")
+        if not title:
+            raise HTTPException(status_code=400, detail="Could not extract TikTok description")
+        return f"{author}: {title}" if author else title
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not fetch TikTok data: {e}")
+
+
+async def extract_reddit_text(url: str) -> str:
+    """Extract Reddit post title, body, and top comments via the JSON API."""
+    clean_url = url.split("?")[0].rstrip("/")
+    json_url = clean_url + ".json"
+    headers = {"User-Agent": "Cronkite-FactChecker/1.0"}
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            resp = await client.get(json_url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+        post = data[0]["data"]["children"][0]["data"]
+        parts = [post.get("title", "")]
+        if post.get("selftext"):
+            parts.append(post["selftext"])
+        for comment in data[1]["data"]["children"][:5]:
+            body = comment.get("data", {}).get("body", "")
+            if body and body not in ("[deleted]", "[removed]"):
+                parts.append(body)
+        text = "\n\n".join(p for p in parts if p)
+        if len(text) < 20:
+            raise HTTPException(status_code=400, detail="Reddit post appears to be empty or deleted")
+        return text
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not fetch Reddit post: {e}")
+
+
+async def extract_instagram_text(url: str) -> str:
+    """Best-effort Instagram caption extraction via Open Graph meta tags."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for prop in ("og:description", "og:title", "description"):
+            meta = soup.find("meta", {"property": prop}) or soup.find("meta", {"name": prop})
+            if meta and meta.get("content"):
+                return meta["content"]
+        raise HTTPException(status_code=400, detail="Could not extract Instagram content. Post may be private or login-gated.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not fetch Instagram post: {e}")
+
+
+# ── Generic article scraper (with social/YouTube routing) ────────────────────
+
 async def fetch_article_text(url: str) -> str:
-    """Fetch and extract article text from a URL."""
+    """Route to the right extractor based on URL type."""
+    if is_youtube_url(url):
+        return await extract_youtube_transcript(url)
+    if is_twitter_url(url):
+        return await extract_twitter_text(url)
+    if is_tiktok_url(url):
+        return await extract_tiktok_text(url)
+    if is_reddit_url(url):
+        return await extract_reddit_text(url)
+    if is_instagram_url(url):
+        return await extract_instagram_text(url)
+
+    # Generic article scraping
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -50,9 +248,9 @@ async def fetch_article_text(url: str) -> str:
             resp.raise_for_status()
             html = resp.text
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not fetch URL: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Could not fetch URL: {e}")
 
-    # Try newspaper3k first (best for news articles)
+    # newspaper3k (best for news articles)
     try:
         from newspaper import Article
         article = Article(url)
@@ -63,27 +261,24 @@ async def fetch_article_text(url: str) -> str:
     except Exception:
         pass
 
-    # Fallback: BeautifulSoup extraction
+    # BeautifulSoup fallback
     try:
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(html, "html.parser")
-        # Remove script, style, nav, header, footer
         for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form"]):
             tag.decompose()
-        # Try article tag first
         article_tag = soup.find("article")
-        if article_tag:
-            paragraphs = article_tag.find_all("p")
-        else:
-            paragraphs = soup.find_all("p")
+        paragraphs = article_tag.find_all("p") if article_tag else soup.find_all("p")
         text = "\n".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20)
         if len(text) >= 100:
             return text
     except Exception:
         pass
 
-    raise HTTPException(status_code=400, detail="Could not extract article text from URL. Try pasting the text directly.")
+    raise HTTPException(status_code=400, detail="Could not extract text from URL. Try pasting the text directly.")
 
+
+# ── Tavily search ─────────────────────────────────────────────────────────────
 
 def search_claim(tavily: TavilyClient, claim: str) -> list[dict]:
     results = []
@@ -95,13 +290,22 @@ def search_claim(tavily: TavilyClient, claim: str) -> list[dict]:
             if r.get("content") and len(r["content"]) > 50:
                 domain = r.get("url", "").split("/")[2] if r.get("url") else "Web"
                 results.append({"text": r["content"][:400], "source": domain})
-    except:
+    except Exception:
         pass
     return results[:5]
 
+
+# ── Health ────────────────────────────────────────────────────────────────────
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+# ── Analyse endpoint ──────────────────────────────────────────────────────────
+
 @app.post("/analyse")
 async def analyse(req: AnalyseRequest):
-    # If URL provided but no text, scrape the article
     article_text = req.text
     article_url = req.url
 
@@ -203,8 +407,11 @@ async def analyse(req: AnalyseRequest):
             parts = raw.split("```")
             for part in parts:
                 p = part.strip()
-                if p.startswith("json"): p = p[4:].strip()
-                if p.startswith("{"): raw = p; break
+                if p.startswith("json"):
+                    p = p[4:].strip()
+                if p.startswith("{"):
+                    raw = p
+                    break
 
         start = raw.find("{")
         end = raw.rfind("}") + 1
@@ -223,7 +430,110 @@ async def analyse(req: AnalyseRequest):
             bias_label=data.get("bias_label", "Centre"),
             bias_summary=data.get("bias_summary", ""),
             language_flags=language_flags,
-            claims=claims
+            claims=claims,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── YouTube transcript endpoint ───────────────────────────────────────────────
+
+@app.get("/youtube/transcript")
+async def get_youtube_transcript(url: str):
+    """Extract and return a transcript for a YouTube video URL."""
+    if not is_youtube_url(url):
+        raise HTTPException(status_code=400, detail="Not a valid YouTube URL")
+    text = await extract_youtube_transcript(url)
+    return {"transcript": text, "length": len(text)}
+
+
+# ── Education endpoints ───────────────────────────────────────────────────────
+
+@app.get("/modules")
+async def list_modules(user: dict = Depends(get_current_user)):
+    """List all modules owned by the authenticated teacher."""
+    sb = get_supabase()
+    result = sb.table("modules").select("*").eq("teacher_id", user["sub"]).order("created_at", desc=True).execute()
+    return result.data
+
+
+@app.post("/modules", status_code=201)
+async def create_module(body: ModuleCreate, user: dict = Depends(get_current_user)):
+    """Create a new module (teacher only)."""
+    sb = get_supabase()
+    result = sb.table("modules").insert({
+        "teacher_id": user["sub"],
+        "title": body.title,
+        "description": body.description,
+        "focus_point": body.focus_point,
+    }).execute()
+    return result.data[0]
+
+
+@app.get("/modules/{module_id}")
+async def get_module(module_id: str, user: dict = Depends(get_current_user)):
+    sb = get_supabase()
+    result = sb.table("modules").select("*").eq("id", module_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Module not found")
+    return result.data[0]
+
+
+@app.get("/modules/{module_id}/assignments")
+async def list_assignments(module_id: str, user: dict = Depends(get_current_user)):
+    """List all assignments in a module."""
+    sb = get_supabase()
+    result = sb.table("assignments").select("*").eq("module_id", module_id).order("created_at").execute()
+    return result.data
+
+
+@app.post("/assignments", status_code=201)
+async def create_assignment(body: AssignmentCreate, user: dict = Depends(get_current_user)):
+    """Add an article assignment to a module (teacher only)."""
+    sb = get_supabase()
+    result = sb.table("assignments").insert({
+        "module_id": body.module_id,
+        "article_url": body.article_url,
+        "article_title": body.article_title,
+    }).execute()
+    return result.data[0]
+
+
+@app.post("/student-results", status_code=201)
+async def save_student_result(body: StudentResultCreate, user: dict = Depends(get_current_user)):
+    """Save a student's fact-check result for an assignment."""
+    sb = get_supabase()
+    result = sb.table("student_results").insert({
+        "student_id": user["sub"],
+        "assignment_id": body.assignment_id,
+        "analysis_json": body.analysis_json,
+    }).execute()
+    return result.data[0]
+
+
+@app.get("/student-results/{assignment_id}")
+async def get_assignment_results(assignment_id: str, user: dict = Depends(get_current_user)):
+    """Get all student results for an assignment (teacher view)."""
+    sb = get_supabase()
+    result = (
+        sb.table("student_results")
+        .select("*, users(name, email)")
+        .eq("assignment_id", assignment_id)
+        .order("completed_at")
+        .execute()
+    )
+    return result.data
+
+
+@app.get("/my-results")
+async def get_my_results(user: dict = Depends(get_current_user)):
+    """Get the authenticated student's own results."""
+    sb = get_supabase()
+    result = (
+        sb.table("student_results")
+        .select("*, assignments(article_title, article_url, module_id)")
+        .eq("student_id", user["sub"])
+        .order("completed_at", desc=True)
+        .execute()
+    )
+    return result.data
