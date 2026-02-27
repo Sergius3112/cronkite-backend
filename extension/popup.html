@@ -6,7 +6,7 @@
   <title>Cronkite</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
     /* ── Reset ──────────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -15,15 +15,19 @@
     :root {
       --paper:        #f7f2e8;
       --paper-dark:   #ede8dc;
+      --paper-tint:   #faf7f2;
       --ink:          #1c1408;
       --ink-mid:      #4a3f2f;
       --ink-light:    #7d6e56;
       --red:          #bf2418;
       --red-dark:     #96201a;
+      --red-tint:     #fdf2f1;
+      --green:        #2d6a4f;
+      --green-tint:   #f0f7f4;
+      --amber:        #92400e;
+      --amber-tint:   #fffbeb;
       --border:       #c5b89a;
       --border-light: #dbd2be;
-      --green:        #2d6a4f;
-      --amber:        #92400e;
     }
 
     /* ── Base ───────────────────────────────────────────────────────────────── */
@@ -222,22 +226,167 @@
       color: var(--red-dark);
     }
 
-    /* ── Divider ─────────────────────────────────────────────────────────────── */
-    .rule {
+    /* ── Results panel ───────────────────────────────────────────────────────── */
+    #resultsPanel { display: none; }
+
+    .results-rule {
       border: none;
-      border-top: 1px solid var(--border-light);
-      margin: 13px 0;
+      border-top: 1px solid var(--border);
+      margin: 12px 0;
     }
+
+    /* Verdict badge */
+    .verdict-badge {
+      display: inline-block;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border: 1px solid;
+      margin-bottom: 11px;
+    }
+
+    .verdict-true    { background: var(--green-tint); color: var(--green);  border-color: #a8d5c2; }
+    .verdict-false   { background: var(--red-tint);   color: var(--red);    border-color: #e8b4b0; }
+    .verdict-mixed   { background: var(--amber-tint); color: var(--amber);  border-color: #f6d28a; }
+    .verdict-unknown { background: var(--paper-dark); color: var(--ink-mid);border-color: var(--border); }
+
+    /* Score pills */
+    .scores-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .score-pill {
+      flex: 1;
+      background: var(--paper-dark);
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: center;
+    }
+
+    .score-value {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--ink);
+      line-height: 1;
+    }
+
+    .score-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink-light);
+      margin-top: 3px;
+    }
+
+    /* Bias meter */
+    .bias-section { margin-bottom: 12px; }
+
+    .bias-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 5px;
+    }
+
+    .bias-section-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-light);
+    }
+
+    .bias-label-value {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: 0.04em;
+    }
+
+    .bias-track {
+      position: relative;
+      height: 6px;
+      background: linear-gradient(to right, #3b82f6 0%, var(--border-light) 50%, #ef4444 100%);
+      border: 1px solid var(--border);
+    }
+
+    .bias-center-line {
+      position: absolute;
+      left: 50%;
+      top: -3px;
+      bottom: -3px;
+      width: 1px;
+      background: var(--ink-mid);
+    }
+
+    .bias-indicator {
+      position: absolute;
+      top: -4px;
+      width: 4px;
+      height: 14px;
+      background: var(--ink);
+      margin-left: -2px;
+      transition: left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 0 0 1px var(--paper);
+    }
+
+    .bias-axis {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 3px;
+      font-size: 8px;
+      font-weight: 500;
+      color: var(--ink-light);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* Summary pullquote */
+    .results-summary {
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--ink-mid);
+      font-style: italic;
+      font-family: 'Playfair Display', Georgia, serif;
+      border-left: 2px solid var(--border);
+      padding-left: 10px;
+      margin-bottom: 12px;
+    }
+
+    /* Reset button */
+    .btn-reset {
+      width: 100%;
+      padding: 8px 16px;
+      background: transparent;
+      color: var(--ink-mid);
+      border: 1px solid var(--border);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      text-align: center;
+    }
+
+    .btn-reset:hover { border-color: var(--ink); color: var(--ink); }
   </style>
 </head>
 <body>
 
   <!-- Masthead -->
   <header class="masthead">
-    <div class="masthead-eyebrow">Cronkite · Extension</div>
-    <h1>The Fact-Checker</h1>
+    <div class="masthead-eyebrow">Chrome Extension</div>
+    <h1>Cronkite</h1>
     <div class="masthead-rule"></div>
-    <div class="masthead-sub">AI-powered claims analysis</div>
+    <div class="masthead-sub">The Fact-Checker · AI Claims Analysis</div>
   </header>
 
   <!-- Server status -->
@@ -266,6 +415,46 @@
     </div>
 
     <div class="error-box" id="errorBox"></div>
+
+    <!-- Results panel (shown after analysis) -->
+    <div id="resultsPanel">
+      <hr class="results-rule" />
+
+      <div class="verdict-badge verdict-unknown" id="verdictBadge">Unknown</div>
+
+      <div class="scores-row">
+        <div class="score-pill">
+          <div class="score-value" id="accuracyScore">–</div>
+          <div class="score-label">Accuracy</div>
+        </div>
+        <div class="score-pill">
+          <div class="score-value" id="biasScoreVal">–</div>
+          <div class="score-label">Bias</div>
+        </div>
+      </div>
+
+      <!-- Bias meter -->
+      <div class="bias-section">
+        <div class="bias-header">
+          <span class="bias-section-label">Bias Meter</span>
+          <span class="bias-label-value" id="biasLabelText">Centre</span>
+        </div>
+        <div class="bias-track">
+          <div class="bias-center-line"></div>
+          <div class="bias-indicator" id="biasIndicator" style="left:50%"></div>
+        </div>
+        <div class="bias-axis">
+          <span>Left</span>
+          <span>Centre</span>
+          <span>Right</span>
+        </div>
+      </div>
+
+      <!-- Summary pullquote -->
+      <p class="results-summary" id="resultsSummary"></p>
+
+      <button class="btn-reset" id="resetBtn">← Analyse Another Page</button>
+    </div>
 
   </div>
 

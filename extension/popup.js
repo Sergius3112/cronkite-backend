@@ -1,13 +1,21 @@
 const BACKEND = 'https://cronkite-backend-production.up.railway.app';
 
-const analyzeBtn = document.getElementById('analyzeBtn');
-const loading = document.getElementById('loading');
-const loadingText = document.getElementById('loadingText');
-const errorBox = document.getElementById('errorBox');
-const serverDot = document.getElementById('serverDot');
-const serverStatus = document.getElementById('serverStatus');
-const statusCard = document.getElementById('statusCard');
-const statusText = document.getElementById('statusText');
+const analyzeBtn    = document.getElementById('analyzeBtn');
+const loading       = document.getElementById('loading');
+const loadingText   = document.getElementById('loadingText');
+const errorBox      = document.getElementById('errorBox');
+const serverDot     = document.getElementById('serverDot');
+const serverStatus  = document.getElementById('serverStatus');
+const statusCard    = document.getElementById('statusCard');
+const statusText    = document.getElementById('statusText');
+const resultsPanel  = document.getElementById('resultsPanel');
+const verdictBadge  = document.getElementById('verdictBadge');
+const accuracyScore = document.getElementById('accuracyScore');
+const biasScoreVal  = document.getElementById('biasScoreVal');
+const biasIndicator = document.getElementById('biasIndicator');
+const biasLabelText = document.getElementById('biasLabelText');
+const resultsSummary= document.getElementById('resultsSummary');
+const resetBtn      = document.getElementById('resetBtn');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +61,60 @@ function showError(msg) {
   errorBox.textContent = '⚠️ ' + msg;
   hideLoading();
 }
+
+// ── Results panel ─────────────────────────────────────────────────────────────
+
+const BIAS_LABELS = [
+  [10,  'Far Left'],
+  [30,  'Left'],
+  [45,  'Centre-Left'],
+  [55,  'Centre'],
+  [70,  'Centre-Right'],
+  [85,  'Right'],
+  [100, 'Far Right'],
+];
+
+function biasLabel(score) {
+  for (const [max, label] of BIAS_LABELS) {
+    if (score <= max) return label;
+  }
+  return 'Far Right';
+}
+
+function showResults(data) {
+  hideLoading();
+
+  const verdict = data.verdict || 'Unknown';
+  verdictBadge.textContent = verdict;
+  const vl = verdict.toLowerCase();
+  verdictBadge.className = 'verdict-badge ' + (
+    vl.includes('true')                          ? 'verdict-true'  :
+    vl.includes('false') || vl.includes('mislead') ? 'verdict-false' :
+    vl.includes('mixed')                         ? 'verdict-mixed'  :
+                                                   'verdict-unknown'
+  );
+
+  accuracyScore.textContent = data.overall_score ?? '–';
+  biasScoreVal.textContent  = data.bias_score    ?? '–';
+
+  const bScore = typeof data.bias_score === 'number' ? data.bias_score : 50;
+  biasIndicator.style.left  = bScore + '%';
+  biasLabelText.textContent = data.bias_label || biasLabel(bScore);
+
+  const summary = data.summary || '';
+  resultsSummary.textContent = summary.length > 200 ? summary.slice(0, 200) + '…' : summary;
+
+  statusCard.style.display   = 'none';
+  analyzeBtn.style.display   = 'none';
+  resultsPanel.style.display = 'block';
+}
+
+resetBtn.addEventListener('click', () => {
+  resultsPanel.style.display = 'none';
+  statusCard.style.display   = '';
+  analyzeBtn.style.display   = '';
+  errorBox.style.display     = 'none';
+});
 
 // ── YouTube transcript extraction (runs in browser, bypasses server blocks) ───
 
@@ -174,10 +236,9 @@ analyzeBtn.addEventListener('click', async () => {
     }
 
     const data = await response.json();
-    showLoading('Displaying results...');
 
-    await chrome.tabs.sendMessage(tab.id, { action: 'showSidebar', data });
-    window.close();
+    chrome.tabs.sendMessage(tab.id, { action: 'showSidebar', data }).catch(() => {});
+    showResults(data);
 
   } catch (err) {
     if (err.message.toLowerCase().includes('fetch') || err.message.includes('connect')) {
