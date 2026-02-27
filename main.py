@@ -3,7 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from groq import Groq
 from tavily import TavilyClient
-import json, os, re, httpx
+import json, os, re, httpx, logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 from typing import Optional
 from jose import jwt
 
@@ -107,6 +110,9 @@ async def extract_youtube_transcript(url: str) -> str:
     """Extract transcript from a YouTube video using youtube-transcript-api."""
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api._errors import (
+            TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
+        )
     except ImportError:
         raise HTTPException(status_code=500, detail="youtube-transcript-api not installed")
 
@@ -115,18 +121,52 @@ async def extract_youtube_transcript(url: str) -> str:
         raise HTTPException(status_code=400, detail="Could not parse YouTube video ID from URL")
 
     video_id = match.group(1)
+    logger.info(f"Fetching YouTube transcript for video_id={video_id}")
+
+    # Use an httpx client with a 30-second timeout passed to the api
     try:
+        http_client = httpx.Client(timeout=30.0)
+        api = YouTubeTranscriptApi(http_client=http_client)
+    except TypeError:
+        # Older builds may not accept http_client; fall back to default
         api = YouTubeTranscriptApi()
+
+    entries = None
+
+    # Attempt 1: fetch directly with preferred languages
+    try:
         entries = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
-    except Exception:
+        logger.info(f"Fetched transcript directly for {video_id}, entries={len(entries)}")
+    except Exception as e1:
+        logger.warning(f"Direct fetch failed for {video_id}: {type(e1).__name__}: {e1}")
+
+    # Attempt 2: list all transcripts, prefer generated English
+    if entries is None:
         try:
-            api = YouTubeTranscriptApi()
-            transcripts = api.list(video_id)
-            entries = transcripts.find_generated_transcript(["en"]).fetch()
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"No transcript available for this video: {e}")
+            transcript_list = api.list(video_id)
+            available = [t.language_code for t in transcript_list]
+            logger.info(f"Available transcripts for {video_id}: {available}")
+            entries = transcript_list.find_generated_transcript(["en"]).fetch()
+            logger.info(f"Fetched generated transcript for {video_id}, entries={len(entries)}")
+        except Exception as e2:
+            logger.warning(f"Generated transcript fetch failed for {video_id}: {type(e2).__name__}: {e2}")
+
+    # Attempt 3: take whatever language is available first
+    if entries is None:
+        try:
+            transcript_list = api.list(video_id)
+            first = next(iter(transcript_list))
+            logger.info(f"Falling back to first available transcript language={first.language_code}")
+            entries = first.fetch()
+        except Exception as e3:
+            logger.error(f"All transcript attempts failed for {video_id}: {type(e3).__name__}: {e3}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"No transcript available for video {video_id}: {type(e3).__name__}: {e3}"
+            )
 
     text = " ".join(entry["text"] for entry in entries)
+    logger.info(f"Transcript for {video_id}: {len(text)} chars")
     if len(text) < 50:
         raise HTTPException(status_code=400, detail="Transcript is empty or too short")
     return text
@@ -443,9 +483,16 @@ async def analyse(req: AnalyseRequest):
 @app.get("/youtube/transcript")
 async def get_youtube_transcript(url: str):
     """Extract and return a transcript for a YouTube video URL."""
+    logger.info(f"GET /youtube/transcript url={url}")
     if not is_youtube_url(url):
         raise HTTPException(status_code=400, detail="Not a valid YouTube URL")
-    text = await extract_youtube_transcript(url)
+    try:
+        text = await extract_youtube_transcript(url)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in /youtube/transcript: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {type(e).__name__}: {e}")
     return {"transcript": text, "length": len(text)}
 
 
