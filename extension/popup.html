@@ -4,460 +4,147 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cronkite</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
-    /* ── Reset ──────────────────────────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    /* ── Tokens ─────────────────────────────────────────────────────────────── */
-    :root {
-      --paper:        #f7f2e8;
-      --paper-dark:   #ede8dc;
-      --paper-tint:   #faf7f2;
-      --ink:          #1c1408;
-      --ink-mid:      #4a3f2f;
-      --ink-light:    #7d6e56;
-      --red:          #bf2418;
-      --red-dark:     #96201a;
-      --red-tint:     #fdf2f1;
-      --green:        #2d6a4f;
-      --green-tint:   #f0f7f4;
-      --amber:        #92400e;
-      --amber-tint:   #fffbeb;
-      --border:       #c5b89a;
-      --border-light: #dbd2be;
-    }
-
-    /* ── Base ───────────────────────────────────────────────────────────────── */
     body {
-      width: 400px;
-      font-family: 'DM Sans', system-ui, sans-serif;
-      background: var(--paper);
-      color: var(--ink);
-      position: relative;
-      overflow-x: hidden;
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+      background: #0a0a0a;
+      color: #e8e8e8;
     }
 
-    /* Grain texture overlay */
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 999;
-      opacity: 0.045;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
-      background-size: 256px 256px;
-    }
-
-    /* ── Masthead ────────────────────────────────────────────────────────────── */
-    .masthead {
-      background: var(--ink);
-      padding: 14px 16px 12px;
-      position: relative;
-    }
-
-    .masthead-eyebrow {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--red);
-      margin-bottom: 4px;
-    }
-
-    .masthead h1 {
-      font-family: 'Playfair Display', Georgia, serif;
-      font-size: 22px;
-      font-weight: 700;
-      color: var(--paper);
-      line-height: 1.1;
-      letter-spacing: -0.01em;
-    }
-
-    .masthead-rule {
-      height: 1px;
-      background: var(--red);
-      margin: 8px 0 6px;
-    }
-
-    .masthead-sub {
-      font-size: 9px;
-      font-weight: 500;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--ink-light);
-    }
-
-    /* ── Server status bar ───────────────────────────────────────────────────── */
-    .status-bar {
-      background: var(--paper-dark);
-      border-bottom: 1px solid var(--border);
-      padding: 5px 16px;
+    .header {
+      background: #111;
+      padding: 16px 18px;
+      border-bottom: 1px solid #222;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 10px;
+    }
+
+    .logo-wrap { width: 34px; height: 34px; flex-shrink: 0; }
+    .logo-wrap img { width: 100%; height: 100%; object-fit: contain; }
+
+    .brand h1 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.3px;
+    }
+
+    .brand p {
       font-size: 10px;
-      font-weight: 500;
-      letter-spacing: 0.04em;
-      color: var(--ink-light);
-    }
-
-    .dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--green);
-      flex-shrink: 0;
-    }
-
-    .dot.offline { background: var(--red); }
-
-    /* ── Content ─────────────────────────────────────────────────────────────── */
-    .content {
-      padding: 14px 16px 16px;
-    }
-
-    /* ── Status card ─────────────────────────────────────────────────────────── */
-    .status-card {
-      background: var(--paper-dark);
-      border: 1px solid var(--border);
-      border-left: 3px solid var(--ink-mid);
-      padding: 11px 13px;
-      margin-bottom: 13px;
-    }
-
-    .status-label {
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 0.16em;
+      color: #555;
+      letter-spacing: 1.2px;
       text-transform: uppercase;
-      color: var(--ink-light);
-      margin-bottom: 5px;
+      margin-top: 1px;
     }
 
-    .status-text {
+    .content { padding: 18px; }
+
+    .intro-card {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .intro-card p {
       font-size: 12px;
-      line-height: 1.55;
-      color: var(--ink-mid);
+      color: #888;
+      line-height: 1.6;
+      text-align: center;
     }
 
-    .status-text strong { color: var(--ink); font-weight: 700; }
+    .intro-card strong { color: #ccc; }
 
-    /* YouTube notice variant */
-    .status-card.yt-card {
-      border-left-color: var(--red);
-      background: #fdf2f1;
-    }
-
-    .status-card.yt-card .status-label { color: var(--red); }
-
-    /* ── Buttons ─────────────────────────────────────────────────────────────── */
-    .btn-analyse {
-      display: block;
+    .btn-ask {
       width: 100%;
-      padding: 11px 16px;
-      background: var(--ink);
-      color: var(--paper);
-      border: 1px solid var(--ink);
-      font-family: 'DM Sans', sans-serif;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      padding: 13px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
       cursor: pointer;
-      transition: background 0.15s, color 0.15s;
-      text-align: center;
+      transition: all 0.2s;
+      letter-spacing: 0.2px;
     }
 
-    .btn-analyse:hover {
-      background: var(--red);
-      border-color: var(--red);
-    }
+    .btn-ask:hover { background: #e8e8e8; transform: translateY(-1px); }
+    .btn-ask:active { transform: translateY(0); }
+    .btn-ask:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
 
-    .btn-analyse:active { background: var(--red-dark); border-color: var(--red-dark); }
+    .loading { display: none; text-align: center; padding: 20px 16px; }
 
-    .btn-analyse:disabled {
-      background: var(--border);
-      border-color: var(--border);
-      color: var(--ink-light);
-      cursor: not-allowed;
-    }
-
-    /* ── Loading ─────────────────────────────────────────────────────────────── */
-    .loading {
-      display: none;
-      padding: 14px 0 2px;
-      text-align: center;
-    }
-
-    .spinner {
-      width: 22px;
-      height: 22px;
-      border: 2px solid var(--border);
-      border-top-color: var(--red);
+    .spinner-ring {
+      width: 32px; height: 32px;
+      border: 2px solid #222;
+      border-top-color: #fff;
       border-radius: 50%;
-      animation: spin 0.75s linear infinite;
-      margin: 0 auto 8px;
+      animation: spin 0.9s linear infinite;
+      margin: 0 auto 10px;
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 12px; color: #555; }
 
-    .loading-text {
-      font-size: 11px;
-      font-weight: 500;
-      color: var(--ink-light);
-      letter-spacing: 0.03em;
-    }
-
-    /* ── Error ───────────────────────────────────────────────────────────────── */
-    .error-box {
+    .error {
       display: none;
+      background: rgba(200,50,50,0.1);
+      border: 1px solid rgba(200,50,50,0.3);
+      border-radius: 8px;
+      padding: 12px;
       margin-top: 12px;
-      background: #fdf2f1;
-      border: 1px solid #e8b4b0;
-      border-left: 3px solid var(--red);
-      padding: 10px 12px;
-      font-size: 11px;
-      line-height: 1.5;
-      color: var(--red-dark);
-    }
-
-    /* ── Results panel ───────────────────────────────────────────────────────── */
-    #resultsPanel { display: none; }
-
-    .results-rule {
-      border: none;
-      border-top: 1px solid var(--border);
-      margin: 12px 0;
-    }
-
-    /* Verdict badge */
-    .verdict-badge {
-      display: inline-block;
-      font-family: 'DM Sans', sans-serif;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      padding: 4px 10px;
-      border: 1px solid;
-      margin-bottom: 11px;
-    }
-
-    .verdict-true    { background: var(--green-tint); color: var(--green);  border-color: #a8d5c2; }
-    .verdict-false   { background: var(--red-tint);   color: var(--red);    border-color: #e8b4b0; }
-    .verdict-mixed   { background: var(--amber-tint); color: var(--amber);  border-color: #f6d28a; }
-    .verdict-unknown { background: var(--paper-dark); color: var(--ink-mid);border-color: var(--border); }
-
-    /* Score pills */
-    .scores-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    .score-pill {
-      flex: 1;
-      background: var(--paper-dark);
-      border: 1px solid var(--border);
-      padding: 8px 10px;
-      text-align: center;
-    }
-
-    .score-value {
-      font-family: 'Playfair Display', Georgia, serif;
-      font-size: 22px;
-      font-weight: 700;
-      color: var(--ink);
-      line-height: 1;
-    }
-
-    .score-label {
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--ink-light);
-      margin-top: 3px;
-    }
-
-    /* Bias meter */
-    .bias-section { margin-bottom: 12px; }
-
-    .bias-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 5px;
-    }
-
-    .bias-section-label {
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--ink-light);
-    }
-
-    .bias-label-value {
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--ink);
-      letter-spacing: 0.04em;
-    }
-
-    .bias-track {
-      position: relative;
-      height: 6px;
-      background: linear-gradient(to right, #3b82f6 0%, var(--border-light) 50%, #ef4444 100%);
-      border: 1px solid var(--border);
-    }
-
-    .bias-center-line {
-      position: absolute;
-      left: 50%;
-      top: -3px;
-      bottom: -3px;
-      width: 1px;
-      background: var(--ink-mid);
-    }
-
-    .bias-indicator {
-      position: absolute;
-      top: -4px;
-      width: 4px;
-      height: 14px;
-      background: var(--ink);
-      margin-left: -2px;
-      transition: left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-      box-shadow: 0 0 0 1px var(--paper);
-    }
-
-    .bias-axis {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 3px;
-      font-size: 8px;
-      font-weight: 500;
-      color: var(--ink-light);
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-
-    /* Summary pullquote */
-    .results-summary {
       font-size: 12px;
-      line-height: 1.6;
-      color: var(--ink-mid);
-      font-style: italic;
-      font-family: 'Playfair Display', Georgia, serif;
-      border-left: 2px solid var(--border);
-      padding-left: 10px;
-      margin-bottom: 12px;
+      color: #f87171;
+      line-height: 1.5;
     }
 
-    /* Reset button */
-    .btn-reset {
-      width: 100%;
-      padding: 8px 16px;
-      background: transparent;
-      color: var(--ink-mid);
-      border: 1px solid var(--border);
-      font-family: 'DM Sans', sans-serif;
-      font-size: 11px;
-      font-weight: 500;
-      letter-spacing: 0.06em;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s;
+    .footer {
+      padding: 10px 18px;
+      border-top: 1px solid #1a1a1a;
+      font-size: 10px;
+      color: #333;
       text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
     }
 
-    .btn-reset:hover { border-color: var(--ink); color: var(--ink); }
+    .status-dot { width: 5px; height: 5px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
+    .status-dot.offline { background: #ef4444; }
   </style>
 </head>
 <body>
-
-  <!-- Masthead -->
-  <header class="masthead">
-    <div class="masthead-eyebrow">Chrome Extension</div>
-    <h1>Cronkite</h1>
-    <div class="masthead-rule"></div>
-    <div class="masthead-sub">The Fact-Checker · AI Claims Analysis</div>
-  </header>
-
-  <!-- Server status -->
-  <div class="status-bar">
-    <span class="dot" id="serverDot"></span>
-    <span id="serverStatus">Checking server…</span>
+  <div class="header">
+    <div class="logo-wrap"><img src="icons_white/icon128.png" alt="Cronkite"></div>
+    <div class="brand">
+      <h1>Cronkite</h1>
+      <p>AI Claims Analysis</p>
+    </div>
   </div>
-
-  <!-- Main content -->
   <div class="content">
-
-    <!-- Dynamic status card — updated by JS based on page type -->
-    <div class="status-card" id="statusCard">
-      <p class="status-label">Current Page</p>
-      <p class="status-text" id="statusText">
-        Navigate to a news article, then click <strong>Analyse Article</strong>
-        to extract and fact-check its claims.
-      </p>
+    <div class="intro-card">
+      <p>Click <strong>Ask Cronkite</strong> to analyse this article's claims against live sources.</p>
     </div>
-
-    <button class="btn-analyse" id="analyzeBtn">Analyse Article</button>
-
+    <button class="btn-ask" id="analyzeBtn">Ask Cronkite</button>
     <div class="loading" id="loading">
-      <div class="spinner"></div>
-      <p class="loading-text" id="loadingText">Extracting article text…</p>
+      <div class="spinner-ring"></div>
+      <div class="loading-text" id="loadingText">Extracting article text...</div>
     </div>
-
-    <div class="error-box" id="errorBox"></div>
-
-    <!-- Results panel (shown after analysis) -->
-    <div id="resultsPanel">
-      <hr class="results-rule" />
-
-      <div class="verdict-badge verdict-unknown" id="verdictBadge">Unknown</div>
-
-      <div class="scores-row">
-        <div class="score-pill">
-          <div class="score-value" id="accuracyScore">–</div>
-          <div class="score-label">Accuracy</div>
-        </div>
-        <div class="score-pill">
-          <div class="score-value" id="biasScoreVal">–</div>
-          <div class="score-label">Bias</div>
-        </div>
-      </div>
-
-      <!-- Bias meter -->
-      <div class="bias-section">
-        <div class="bias-header">
-          <span class="bias-section-label">Bias Meter</span>
-          <span class="bias-label-value" id="biasLabelText">Centre</span>
-        </div>
-        <div class="bias-track">
-          <div class="bias-center-line"></div>
-          <div class="bias-indicator" id="biasIndicator" style="left:50%"></div>
-        </div>
-        <div class="bias-axis">
-          <span>Left</span>
-          <span>Centre</span>
-          <span>Right</span>
-        </div>
-      </div>
-
-      <!-- Summary pullquote -->
-      <p class="results-summary" id="resultsSummary"></p>
-
-      <button class="btn-reset" id="resetBtn">← Analyse Another Page</button>
-    </div>
-
+    <div class="error" id="errorBox"></div>
   </div>
-
+  <div class="footer">
+    <span class="status-dot" id="serverDot"></span>
+    <span id="serverStatus">Checking server...</span>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>
