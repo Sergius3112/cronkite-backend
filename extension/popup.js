@@ -139,47 +139,60 @@ function getYouTubeCaptionTrackUrl() {
   }
 }
 
-function parseJson3Transcript(data) {
-  const events = data?.events || [];
-  return events
-    .filter(e => e.segs)
-    .map(e => e.segs.map(s => (s.utf8 || '').replace(/\n/g, ' ')).join(''))
+// Parses YouTube timedtext XML into plain text.
+// DOMParser handles HTML entity decoding (&amp; &#39; etc.) automatically.
+function parseXmlTranscript(xmlText) {
+  const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+  return Array.from(doc.querySelectorAll('text'))
+    .map(el => el.textContent.trim())
+    .filter(Boolean)
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 async function fetchYouTubeTranscript(tabId, videoId) {
-  // Step 1: extract caption track URL from the page's ytInitialPlayerResponse
+  // Step 1: try to get the exact caption track URL from the page
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     func: getYouTubeCaptionTrackUrl
   });
 
-  let captionUrl = results[0]?.result;
+  const pageUrl = results[0]?.result;
 
-  // Step 2: if the page gave us a URL, append json3 format
-  if (captionUrl) {
-    const sep = captionUrl.includes('?') ? '&' : '?';
-    captionUrl = `${captionUrl}${sep}fmt=json3`;
-  } else {
-    // Fallback: YouTube's timedtext API (works for auto-captioned videos)
-    captionUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&fmt=json3`;
+  if (pageUrl) {
+    // Use the page-provided URL with XML format
+    const sep = pageUrl.includes('?') ? '&' : '?';
+    try {
+      const resp = await fetch(`${pageUrl}${sep}fmt=xml`);
+      if (resp.ok) {
+        const text = parseXmlTranscript(await resp.text());
+        if (text && text.length >= 50) return text;
+      }
+    } catch { /* fall through to timedtext fallback */ }
   }
 
-  const resp = await fetch(captionUrl);
-  if (!resp.ok) {
-    throw new Error(`Caption fetch failed (${resp.status}). This video may have captions disabled.`);
+  // Step 2: timedtext API with multiple language/kind variants
+  const base = `https://www.youtube.com/api/timedtext?v=${videoId}`;
+  const attempts = [
+    `${base}&lang=en`,
+    `${base}&lang=en-GB`,
+    `${base}&kind=asr&lang=en`,
+    `${base}&kind=asr&lang=en-GB`,
+  ];
+
+  for (const url of attempts) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+      const text = parseXmlTranscript(await resp.text());
+      if (text && text.length >= 50) return text;
+    } catch {
+      continue;
+    }
   }
 
-  const data = await resp.json();
-  const text = parseJson3Transcript(data);
-
-  if (!text || text.length < 50) {
-    throw new Error('No usable captions found for this video. Captions may be disabled or unavailable.');
-  }
-
-  return text;
+  throw new Error('No captions found for this video. Captions may be disabled or unavailable.');
 }
 
 // ── Main click handler ────────────────────────────────────────────────────────
@@ -275,9 +288,7 @@ async function initUI() {
     statusCard.classList.add('yt-card');
     document.querySelector('.status-label').textContent = 'YouTube Detected';
     statusText.innerHTML =
-      'For YouTube analysis, open <strong>cronkite-edu.html</strong> and paste ' +
-      'this video URL — it fetches captions directly in your browser.' +
-      '<br><br>Or click below to analyse the video here and view results in the sidebar.';
+      'Click below to extract captions from this video and fact-check its claims.';
     analyzeBtn.textContent = 'Analyse YouTube Video';
   }
 }
