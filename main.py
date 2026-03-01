@@ -1,9 +1,13 @@
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pathlib import Path
 from pydantic import BaseModel
 from groq import Groq
 from tavily import TavilyClient
 import json, os, re, httpx, logging
+
+BASE_DIR = Path(__file__).parent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -428,6 +432,21 @@ def search_claim(tavily: TavilyClient, claim: str) -> list[dict]:
     except Exception:
         pass
     return results[:5]
+
+
+# ── Static HTML pages ─────────────────────────────────────────────────────────
+
+@app.get("/teacher")
+async def serve_teacher():
+    return FileResponse(BASE_DIR / "teacher.html")
+
+@app.get("/student")
+async def serve_student():
+    return FileResponse(BASE_DIR / "student.html")
+
+@app.get("/app")
+async def serve_app():
+    return FileResponse(BASE_DIR / "cronkite-edu.html")
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

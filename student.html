@@ -458,8 +458,8 @@
     const SUPABASE_URL = 'https://givyodepnqelhhmtmypk.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdpdnlvZGVwbnFlbGhobXRteXBrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMzIxODIsImV4cCI6MjA4NzcwODE4Mn0.xqUQLEKfsIs2lxncsYJk7CwkXWat4QCL3xF78ixgnpk';
 
-    // URL of the Cronkite web app for analysis (update if hosted elsewhere)
-    const CRONKITE_EDU_URL = 'cronkite-edu.html';
+    // URL of the Cronkite web app for analysis
+    const CRONKITE_EDU_URL = 'https://cronkite-backend-production.up.railway.app/app';
 
     const { createClient } = supabase;
     const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -479,7 +479,7 @@
     document.getElementById('google-login-btn').addEventListener('click', async () => {
       const { error } = await sb.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.href }
+        options: { redirectTo: 'https://cronkite-backend-production.up.railway.app/student' }
       });
       if (error) toast('Login error: ' + error.message, 'error');
     });

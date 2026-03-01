@@ -625,7 +625,7 @@
     document.getElementById('google-login-btn').addEventListener('click', async () => {
       const { error } = await sb.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.href }
+        options: { redirectTo: 'https://cronkite-backend-production.up.railway.app/teacher' }
       });
       if (error) toast('Login error: ' + error.message, 'error');
     });
