@@ -5,13 +5,42 @@ const errorBox = document.getElementById('errorBox');
 const serverDot = document.getElementById('serverDot');
 const serverStatus = document.getElementById('serverStatus');
 const resultsPanel = document.getElementById('resultsPanel');
+const scoreCircle  = document.getElementById('scoreCircle');
+const scoreVerdict = document.getElementById('scoreVerdict');
+const scoreSummary = document.getElementById('scoreSummary');
+const claimsHeader = document.getElementById('claimsHeader');
+const claimsList   = document.getElementById('claimsList');
 const verdictBadge = document.getElementById('verdictBadge');
 const biasLabelText = document.getElementById('biasLabelText');
 const biasIndicator = document.getElementById('biasIndicator');
 const resetBtn = document.getElementById('resetBtn');
 
+function claimClass(verdict) {
+  const v = (verdict || '').toLowerCase();
+  if (v.includes('true')) return 'cl-true';
+  if (v.includes('false') || v.includes('mislead')) return 'cl-false';
+  if (v.includes('mixed')) return 'cl-mixed';
+  return '';
+}
+
 function showResults(data) {
   hideLoading();
+
+  // Credibility score
+  scoreCircle.textContent = data.overall_score ?? '—';
+  scoreVerdict.textContent = data.verdict || 'Unknown';
+  scoreSummary.textContent = data.summary || '';
+
+  // Claims list
+  const claims = data.claims || [];
+  claimsHeader.textContent = `Claims Analysed — ${claims.length}`;
+  claimsList.innerHTML = claims.map(c => `
+    <div class="claim-item ${claimClass(c.verdict)}">
+      <div class="claim-item-text">${c.claim}</div>
+      <div class="claim-item-verdict">${c.verdict}</div>
+    </div>`).join('');
+
+  // Verdict badge
   const verdict = data.verdict || 'Unknown';
   verdictBadge.textContent = verdict;
   const vl = verdict.toLowerCase();
@@ -21,9 +50,12 @@ function showResults(data) {
     vl.includes('mixed')                            ? 'verdict-mixed'   :
                                                       'verdict-unknown'
   );
+
+  // Bias meter
   const score = typeof data.bias_score === 'number' ? data.bias_score : 50;
   biasIndicator.style.left = score + '%';
   biasLabelText.textContent = data.bias_label || 'Centre';
+
   document.querySelector('.intro-card').style.display = 'none';
   analyzeBtn.style.display = 'none';
   resultsPanel.style.display = 'block';

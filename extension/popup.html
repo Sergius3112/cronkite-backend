@@ -131,6 +131,93 @@
     /* ── Results panel ───────────────────────────────────────────────────── */
     #resultsPanel { display: none; }
 
+    /* Score card */
+    .score-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #ede8dc;
+      border: 1px solid #c5b89a;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .score-circle {
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      border: 3px solid #c5b89a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #0a0a0a;
+      flex-shrink: 0;
+    }
+
+    .score-info { flex: 1; }
+
+    .score-info-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #7d6e56;
+      margin-bottom: 2px;
+    }
+
+    .score-verdict-text {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0a0a0a;
+      margin-bottom: 3px;
+    }
+
+    .score-summary-text {
+      font-size: 11px;
+      color: #4a3f2f;
+      line-height: 1.5;
+    }
+
+    /* Claims list */
+    .claims-section-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #7d6e56;
+      margin-bottom: 6px;
+    }
+
+    .claims-list { margin-bottom: 12px; }
+
+    .claim-item {
+      border-left: 3px solid #c5b89a;
+      padding: 6px 8px;
+      margin-bottom: 5px;
+      background: #ede8dc;
+    }
+
+    .claim-item-text {
+      font-size: 11px;
+      color: #0a0a0a;
+      line-height: 1.45;
+      margin-bottom: 2px;
+    }
+
+    .claim-item-verdict {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #7d6e56;
+    }
+
+    .claim-item.cl-true  { border-left-color: #2d6a4f; }
+    .claim-item.cl-false { border-left-color: #c8102e; }
+    .claim-item.cl-mixed { border-left-color: #92400e; }
+
     .results-rule {
       border: none;
       border-top: 1px solid #c5b89a;
@@ -259,6 +346,22 @@
 
     <!-- Results panel -->
     <div id="resultsPanel">
+      <hr class="results-rule" />
+
+      <!-- Credibility score + verdict + summary -->
+      <div class="score-card">
+        <div class="score-circle" id="scoreCircle">—</div>
+        <div class="score-info">
+          <div class="score-info-label">Credibility Score</div>
+          <div class="score-verdict-text" id="scoreVerdict">—</div>
+          <div class="score-summary-text" id="scoreSummary"></div>
+        </div>
+      </div>
+
+      <!-- Claims list -->
+      <div class="claims-section-label" id="claimsHeader">Claims Analysed</div>
+      <div class="claims-list" id="claimsList"></div>
+
       <hr class="results-rule" />
 
       <div class="verdict-row">

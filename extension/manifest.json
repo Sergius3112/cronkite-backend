@@ -9,6 +9,12 @@
     "https://cronkite-backend-production.up.railway.app/*",
     "https://www.youtube.com/api/timedtext*"
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons_white/icon128.png", "icons_white/icon48.png", "icons_white/icon16.png"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
