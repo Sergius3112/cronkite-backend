@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cronkite — Teacher Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    :root {
+      --paper: #f5f0e8;
+      --paper-dark: #ede8dc;
+      --paper-darker: #dbd2be;
+      --ink: #0a0a0a;
+      --ink-mid: #4a3f2f;
+      --ink-light: #7d6e56;
+      --red: #c8102e;
+      --red-dark: #a50d26;
+      --border: #c5b89a;
+      --green: #2d6a4f;
+      --amber: #92400e;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+
+    /* ── Auth Screen ── */
+    #auth-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .auth-card {
+      background: var(--paper-dark);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 48px 40px;
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+
+    .auth-card h1 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 28px;
+      color: var(--ink);
+      margin-bottom: 6px;
+    }
+
+    .auth-card .tagline {
+      font-size: 11px;
+      color: var(--red);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 32px;
+    }
+
+    .auth-card p {
+      font-size: 13px;
+      color: var(--ink-mid);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+
+    /* ── Header ── */
+    #app-screen { display: none; }
+
+    .site-header {
+      background: var(--ink);
+      border-bottom: 2px solid var(--red);
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-brand {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .header-brand h1 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 18px;
+      color: var(--paper);
+    }
+
+    .header-brand span {
+      font-size: 10px;
+      color: var(--red);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+    }
+
+    .header-user {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-user-name {
+      font-size: 13px;
+      color: var(--paper-darker);
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: all 0.18s;
+      border: none;
+    }
+
+    .btn-primary { background: var(--red); color: var(--paper); }
+    .btn-primary:hover { background: var(--red-dark); transform: translateY(-1px); }
+    .btn-primary:active { transform: none; }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--ink-mid);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--ink); color: var(--ink); }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--ink-light);
+      border: none;
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .btn-ghost:hover { color: var(--ink); }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--red);
+      border: 1px solid #e8b4b0;
+      font-size: 12px;
+      padding: 6px 12px;
+    }
+    .btn-danger:hover { background: #fdf2f1; }
+
+    .btn-sm { padding: 6px 14px; font-size: 12px; }
+
+    .btn-google {
+      background: var(--paper);
+      color: var(--ink);
+      border: 1px solid var(--border);
+      padding: 12px 24px;
+      font-size: 14px;
+      border-radius: 8px;
+      width: 100%;
+      justify-content: center;
+    }
+    .btn-google:hover { border-color: var(--ink); transform: translateY(-1px); }
+
+    .btn-signout {
+      background: transparent;
+      color: var(--paper-darker);
+      border: 1px solid #3a3a3a;
+      font-size: 12px;
+      padding: 6px 14px;
+      border-radius: 6px;
+    }
+    .btn-signout:hover { border-color: var(--paper-darker); color: var(--paper); }
+
+    /* ── Layout ── */
+    .page-wrap {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    .page-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 22px;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+
+    .page-subtitle {
+      font-size: 12px;
+      color: var(--ink-light);
+      letter-spacing: 0.5px;
+      margin-bottom: 28px;
+    }
+
+    /* ── Create Module Form ── */
+    .create-section {
+      background: var(--paper-dark);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px 24px;
+      margin-bottom: 32px;
+    }
+
+    .create-section h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-light);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 16px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .form-field { display: flex; flex-direction: column; gap: 5px; }
+    .form-field.full { grid-column: 1 / -1; }
+
+    label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-mid);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    input[type="text"],
+    input[type="url"],
+    textarea,
+    select {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      color: var(--ink);
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 9px 12px;
+      outline: none;
+      transition: border-color 0.18s;
+      width: 100%;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--ink);
+    }
+
+    textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+
+    .form-actions { display: flex; justify-content: flex-end; }
+
+    /* ── Module Cards ── */
+    .modules-list { display: flex; flex-direction: column; gap: 16px; }
+
+    .module-card {
+      background: var(--paper-dark);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .module-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 18px 20px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .module-header:hover { background: rgba(0,0,0,0.02); }
+
+    .module-info { flex: 1; }
+
+    .module-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 16px;
+      color: var(--ink);
+      margin-bottom: 3px;
+    }
+
+    .module-meta {
+      font-size: 11px;
+      color: var(--ink-light);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .focus-badge {
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2px 9px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--ink-mid);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .module-chevron {
+      font-size: 11px;
+      color: var(--ink-light);
+      transition: transform 0.2s;
+      padding-top: 4px;
+      flex-shrink: 0;
+    }
+
+    .module-card.expanded .module-chevron { transform: rotate(180deg); }
+
+    .module-body {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 18px 20px;
+    }
+
+    .module-card.expanded .module-body { display: block; }
+
+    .module-desc {
+      font-size: 12px;
+      color: var(--ink-mid);
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+
+    /* ── Assignment list inside module ── */
+    .assignments-section-title {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--ink-light);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 10px;
+    }
+
+    .assignments-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+
+    .assignment-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 10px 14px;
+    }
+
+    .assignment-title {
+      flex: 1;
+      font-size: 13px;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .assignment-url {
+      font-size: 11px;
+      color: var(--ink-light);
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+    .assignment-url:hover { color: var(--red); }
+
+    .empty-assignments {
+      font-size: 12px;
+      color: var(--ink-light);
+      font-style: italic;
+      margin-bottom: 14px;
+    }
+
+    /* ── Add assignment mini-form ── */
+    .add-assignment-form {
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 18px;
+    }
+
+    .add-assignment-form h4 {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-light);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+    }
+
+    .inline-form-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+
+    .inline-form-row .form-field { flex: 1; }
+
+    /* ── Results table ── */
+    .results-section { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 16px; }
+
+    .results-table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    th {
+      text-align: left;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--ink-light);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid rgba(197,184,154,0.4);
+      color: var(--ink-mid);
+      vertical-align: middle;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    .score-pill {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .score-green { background: #dcfce7; color: #166534; }
+    .score-amber { background: #fef3c7; color: #92400e; }
+    .score-red   { background: #fee2e2; color: #991b1b; }
+
+    .no-results {
+      font-size: 12px;
+      color: var(--ink-light);
+      font-style: italic;
+      padding: 8px 0;
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--ink);
+      color: var(--paper);
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      z-index: 9999;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: all 0.25s;
+      pointer-events: none;
+    }
+
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { background: var(--red); }
+
+    /* ── Loading overlay ── */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--ink-light);
+    }
+
+    .empty-state h3 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 18px;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+
+    .empty-state p { font-size: 13px; line-height: 1.6; }
+
+    @media (max-width: 640px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .inline-form-row { flex-direction: column; }
+      .site-header { padding: 0 16px; }
+      .page-wrap { padding: 20px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Auth Screen -->
+  <div id="auth-screen">
+    <div class="auth-card">
+      <h1>Cronkite</h1>
+      <div class="tagline">Teacher Dashboard</div>
+      <p>Create fact-checking modules, assign articles to your class, and review student analysis results.</p>
+      <button class="btn btn-google" id="google-login-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink:0">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        Sign in with Google
+      </button>
+    </div>
+  </div>
+
+  <!-- App Screen -->
+  <div id="app-screen">
+    <header class="site-header">
+      <div class="header-brand">
+        <h1>Cronkite</h1>
+        <span>Teacher Dashboard</span>
+      </div>
+      <div class="header-user">
+        <span class="header-user-name" id="user-name-display"></span>
+        <button class="btn btn-signout" id="signout-btn">Sign out</button>
+      </div>
+    </header>
+
+    <div class="page-wrap">
+      <h2 class="page-title">Your Modules</h2>
+      <p class="page-subtitle">Create a module, assign articles, then share the link with students.</p>
+
+      <!-- Create Module Form -->
+      <div class="create-section">
+        <h2>New Module</h2>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="mod-title">Module Title</label>
+            <input type="text" id="mod-title" placeholder="e.g. Climate Science Claims" />
+          </div>
+          <div class="form-field">
+            <label for="mod-focus">Focus Point</label>
+            <select id="mod-focus">
+              <option value="">Select a focus…</option>
+              <option value="Online Safety">Online Safety</option>
+              <option value="Misinformation">Misinformation</option>
+              <option value="Bias">Bias</option>
+              <option value="Source Credibility">Source Credibility</option>
+              <option value="Digital Citizenship">Digital Citizenship</option>
+            </select>
+          </div>
+          <div class="form-field full">
+            <label for="mod-desc">Description</label>
+            <textarea id="mod-desc" placeholder="What should students pay attention to in this module?"></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="create-module-btn">Create Module</button>
+        </div>
+      </div>
+
+      <!-- Modules List -->
+      <div class="modules-list" id="modules-list">
+        <div class="empty-state" id="modules-empty" style="display:none">
+          <h3>No modules yet</h3>
+          <p>Create your first module above to get started.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ── Supabase init ──
+    // Get your anon key from: Supabase Dashboard → Project Settings → API → anon/public
+    const SUPABASE_URL = 'https://givyodepnqelhhmtmypk.supabase.co';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+    const { createClient } = supabase;
+    const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // ── Toast ──
+    function toast(msg, type = 'ok') {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = 'toast show' + (type === 'error' ? ' error' : '');
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => { el.className = 'toast'; }, 3200);
+    }
+
+    // ── Auth ──
+    let currentUser = null;
+
+    document.getElementById('google-login-btn').addEventListener('click', async () => {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.href }
+      });
+      if (error) toast('Login error: ' + error.message, 'error');
+    });
+
+    document.getElementById('signout-btn').addEventListener('click', async () => {
+      await sb.auth.signOut();
+      location.reload();
+    });
+
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        currentUser = session.user;
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('app-screen').style.display = 'block';
+        const name = session.user.user_metadata?.full_name || session.user.email;
+        document.getElementById('user-name-display').textContent = name;
+        await loadModules();
+      } else {
+        currentUser = null;
+        document.getElementById('auth-screen').style.display = 'flex';
+        document.getElementById('app-screen').style.display = 'none';
+      }
+    });
+
+    // ── Modules ──
+    async function loadModules() {
+      const list = document.getElementById('modules-list');
+      list.innerHTML = '<div style="padding:24px;color:var(--ink-light);font-size:13px"><span class="spinner"></span>Loading modules…</div>';
+
+      const { data, error } = await sb
+        .from('modules')
+        .select('*')
+        .eq('teacher_id', currentUser.id)
+        .order('created_at', { ascending: false });
+
+      list.innerHTML = '';
+
+      if (error) {
+        toast('Error loading modules: ' + error.message, 'error');
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        list.innerHTML = '<div class="empty-state"><h3>No modules yet</h3><p>Create your first module above to get started.</p></div>';
+        return;
+      }
+
+      data.forEach(mod => list.appendChild(buildModuleCard(mod)));
+    }
+
+    async function createModule() {
+      const title = document.getElementById('mod-title').value.trim();
+      const focus = document.getElementById('mod-focus').value;
+      const desc = document.getElementById('mod-desc').value.trim();
+
+      if (!title) { toast('Please enter a module title.', 'error'); return; }
+      if (!focus) { toast('Please select a focus point.', 'error'); return; }
+
+      const btn = document.getElementById('create-module-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Creating…';
+
+      const { error } = await sb.from('modules').insert({
+        teacher_id: currentUser.id,
+        title,
+        description: desc || null,
+        focus_point: focus
+      });
+
+      btn.disabled = false;
+      btn.textContent = 'Create Module';
+
+      if (error) {
+        toast('Error: ' + error.message, 'error');
+        return;
+      }
+
+      document.getElementById('mod-title').value = '';
+      document.getElementById('mod-focus').value = '';
+      document.getElementById('mod-desc').value = '';
+      toast('Module created!');
+      await loadModules();
+    }
+
+    document.getElementById('create-module-btn').addEventListener('click', createModule);
+
+    // ── Module Card ──
+    function buildModuleCard(mod) {
+      const card = document.createElement('div');
+      card.className = 'module-card';
+      card.dataset.id = mod.id;
+
+      card.innerHTML = `
+        <div class="module-header">
+          <div class="module-info">
+            <div class="module-title">${escapeHtml(mod.title)}</div>
+            <div class="module-meta">
+              <span class="focus-badge">${escapeHtml(mod.focus_point || '')}</span>
+              <span id="assignment-count-${mod.id}">Loading…</span>
+            </div>
+          </div>
+          <span class="module-chevron">▼</span>
+        </div>
+        <div class="module-body">
+          ${mod.description ? `<div class="module-desc">${escapeHtml(mod.description)}</div>` : ''}
+
+          <div class="assignments-section-title">Assigned Articles</div>
+          <div class="assignments-list" id="assignments-${mod.id}">
+            <div style="font-size:12px;color:var(--ink-light)"><span class="spinner"></span></div>
+          </div>
+
+          <div class="add-assignment-form">
+            <h4>Add Article</h4>
+            <div class="inline-form-row">
+              <div class="form-field">
+                <label>Article Title</label>
+                <input type="text" id="a-title-${mod.id}" placeholder="e.g. BBC: Climate report" />
+              </div>
+              <div class="form-field">
+                <label>Article URL</label>
+                <input type="url" id="a-url-${mod.id}" placeholder="https://…" />
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="addAssignment('${mod.id}')">Add</button>
+            </div>
+          </div>
+
+          <div class="results-section">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <span class="assignments-section-title" style="margin-bottom:0">Student Results</span>
+              <button class="btn btn-outline btn-sm" onclick="loadResults('${mod.id}')">Load Results</button>
+            </div>
+            <div id="results-${mod.id}"></div>
+          </div>
+        </div>
+      `;
+
+      // Toggle expand
+      card.querySelector('.module-header').addEventListener('click', async () => {
+        const isExpanded = card.classList.contains('expanded');
+        card.classList.toggle('expanded');
+        if (!isExpanded) {
+          await loadAssignments(mod.id);
+        }
+      });
+
+      // Lazy-load assignment count
+      loadAssignmentCount(mod.id);
+
+      return card;
+    }
+
+    async function loadAssignmentCount(moduleId) {
+      const { count } = await sb
+        .from('assignments')
+        .select('id', { count: 'exact', head: true })
+        .eq('module_id', moduleId);
+      const el = document.getElementById(`assignment-count-${moduleId}`);
+      if (el) el.textContent = `${count ?? 0} article${count === 1 ? '' : 's'}`;
+    }
+
+    async function loadAssignments(moduleId) {
+      const container = document.getElementById(`assignments-${moduleId}`);
+      if (!container) return;
+
+      const { data, error } = await sb
+        .from('assignments')
+        .select('*')
+        .eq('module_id', moduleId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        container.innerHTML = `<div class="empty-assignments">Error: ${escapeHtml(error.message)}</div>`;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        container.innerHTML = '<div class="empty-assignments">No articles assigned yet.</div>';
+        return;
+      }
+
+      container.innerHTML = data.map(a => `
+        <div class="assignment-row" id="arow-${a.id}">
+          <span class="assignment-title">${escapeHtml(a.article_title || a.article_url)}</span>
+          <a class="assignment-url" href="${escapeHtml(a.article_url)}" target="_blank" rel="noopener">↗ Open</a>
+          <button class="btn btn-danger" onclick="deleteAssignment('${a.id}', '${moduleId}')">Remove</button>
+        </div>
+      `).join('');
+
+      // Update count badge
+      const countEl = document.getElementById(`assignment-count-${moduleId}`);
+      if (countEl) countEl.textContent = `${data.length} article${data.length === 1 ? '' : 's'}`;
+    }
+
+    async function addAssignment(moduleId) {
+      const titleEl = document.getElementById(`a-title-${moduleId}`);
+      const urlEl = document.getElementById(`a-url-${moduleId}`);
+      const title = titleEl.value.trim();
+      const url = urlEl.value.trim();
+
+      if (!url) { toast('Please enter an article URL.', 'error'); return; }
+
+      const { error } = await sb.from('assignments').insert({
+        module_id: moduleId,
+        article_url: url,
+        article_title: title || url
+      });
+
+      if (error) { toast('Error: ' + error.message, 'error'); return; }
+
+      titleEl.value = '';
+      urlEl.value = '';
+      toast('Article assigned!');
+      await loadAssignments(moduleId);
+    }
+
+    async function deleteAssignment(assignmentId, moduleId) {
+      if (!confirm('Remove this assignment?')) return;
+
+      const { error } = await sb.from('assignments').delete().eq('id', assignmentId);
+      if (error) { toast('Error: ' + error.message, 'error'); return; }
+
+      toast('Assignment removed.');
+      await loadAssignments(moduleId);
+    }
+
+    // ── Results ──
+    async function loadResults(moduleId) {
+      const container = document.getElementById(`results-${moduleId}`);
+      container.innerHTML = '<div style="font-size:12px;color:var(--ink-light)"><span class="spinner"></span>Loading…</div>';
+
+      // Get assignments for this module
+      const { data: assignments, error: aErr } = await sb
+        .from('assignments')
+        .select('id, article_title, article_url')
+        .eq('module_id', moduleId);
+
+      if (aErr || !assignments?.length) {
+        container.innerHTML = '<div class="no-results">No assignments to show results for.</div>';
+        return;
+      }
+
+      const assignmentIds = assignments.map(a => a.id);
+
+      // Get results for those assignments
+      const { data: results, error: rErr } = await sb
+        .from('student_results')
+        .select('*, assignments(article_title, article_url), users(name, email)')
+        .in('assignment_id', assignmentIds)
+        .order('completed_at', { ascending: false });
+
+      if (rErr) {
+        container.innerHTML = `<div class="no-results">Error: ${escapeHtml(rErr.message)}</div>`;
+        return;
+      }
+
+      if (!results || results.length === 0) {
+        container.innerHTML = '<div class="no-results">No student submissions yet.</div>';
+        return;
+      }
+
+      const rows = results.map(r => {
+        const score = r.analysis_json?.overall_score ?? '—';
+        const verdict = r.analysis_json?.verdict ?? '—';
+        const pillClass = typeof score === 'number'
+          ? (score >= 70 ? 'score-green' : score >= 40 ? 'score-amber' : 'score-red')
+          : '';
+        const student = r.users?.name || r.users?.email || r.student_id;
+        const article = r.assignments?.article_title || r.assignments?.article_url || r.assignment_id;
+        const date = r.completed_at ? new Date(r.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—';
+
+        return `<tr>
+          <td>${escapeHtml(String(student))}</td>
+          <td>${escapeHtml(String(article))}</td>
+          <td>${typeof score === 'number' ? `<span class="score-pill ${pillClass}">${score}</span>` : '—'}</td>
+          <td>${escapeHtml(String(verdict))}</td>
+          <td>${date}</td>
+        </tr>`;
+      }).join('');
+
+      container.innerHTML = `
+        <div class="results-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Article</th>
+                <th>Score</th>
+                <th>Verdict</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // ── Utils ──
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.appendChild(document.createTextNode(text));
+      return d.innerHTML;
+    }
+  </script>
+</body>
+</html>
