@@ -4,6 +4,37 @@ const loadingText = document.getElementById('loadingText');
 const errorBox = document.getElementById('errorBox');
 const serverDot = document.getElementById('serverDot');
 const serverStatus = document.getElementById('serverStatus');
+const resultsPanel = document.getElementById('resultsPanel');
+const verdictBadge = document.getElementById('verdictBadge');
+const biasLabelText = document.getElementById('biasLabelText');
+const biasIndicator = document.getElementById('biasIndicator');
+const resetBtn = document.getElementById('resetBtn');
+
+function showResults(data) {
+  hideLoading();
+  const verdict = data.verdict || 'Unknown';
+  verdictBadge.textContent = verdict;
+  const vl = verdict.toLowerCase();
+  verdictBadge.className = 'verdict-badge ' + (
+    vl.includes('true')                             ? 'verdict-true'    :
+    vl.includes('false') || vl.includes('mislead')  ? 'verdict-false'   :
+    vl.includes('mixed')                            ? 'verdict-mixed'   :
+                                                      'verdict-unknown'
+  );
+  const score = typeof data.bias_score === 'number' ? data.bias_score : 50;
+  biasIndicator.style.left = score + '%';
+  biasLabelText.textContent = data.bias_label || 'Centre';
+  document.querySelector('.intro-card').style.display = 'none';
+  analyzeBtn.style.display = 'none';
+  resultsPanel.style.display = 'block';
+}
+
+resetBtn.addEventListener('click', () => {
+  resultsPanel.style.display = 'none';
+  document.querySelector('.intro-card').style.display = '';
+  analyzeBtn.style.display = '';
+  errorBox.style.display = 'none';
+});
 
 // Check if backend server is running
 async function checkServer() {
@@ -78,16 +109,11 @@ analyzeBtn.addEventListener('click', async () => {
 
     const data = await response.json();
 
-    showLoading('Displaying results...');
-
     // Send results to content script to show sidebar
-    await chrome.tabs.sendMessage(tab.id, {
-      action: 'showSidebar',
-      data: data
-    });
+    chrome.tabs.sendMessage(tab.id, { action: 'showSidebar', data }).catch(() => {});
 
-    // Close popup
-    window.close();
+    // Show results in popup
+    showResults(data);
 
   } catch (err) {
     if (err.message.includes('fetch')) {
