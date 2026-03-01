@@ -31,7 +31,7 @@
 
     .brand h1 {
       font-family: 'Playfair Display', Georgia, serif;
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 700;
       color: #f5f0e8;
       letter-spacing: 0.3px;
@@ -50,7 +50,7 @@
     .intro-card {
       background: #ede8dc;
       border: 1px solid #c5b89a;
-      border-radius: 0;
+      border-radius: 10px;
       padding: 14px;
       margin-bottom: 14px;
     }
@@ -70,8 +70,7 @@
       background: #c8102e;
       color: #f5f0e8;
       border: none;
-      border-radius: 0;
-      font-family: 'DM Sans', sans-serif;
+      border-radius: 8px;
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
@@ -101,8 +100,7 @@
       display: none;
       background: #fdf2f1;
       border: 1px solid #e8b4b0;
-      border-left: 3px solid #c8102e;
-      border-radius: 0;
+      border-radius: 8px;
       padding: 12px;
       margin-top: 12px;
       font-size: 12px;
@@ -127,202 +125,6 @@
 
     .status-dot { width: 5px; height: 5px; border-radius: 50%; background: #2d6a4f; flex-shrink: 0; }
     .status-dot.offline { background: #c8102e; }
-
-    /* ── Results panel ───────────────────────────────────────────────────── */
-    #resultsPanel { display: none; }
-
-    /* Score card */
-    .score-card {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      background: #ede8dc;
-      border: 1px solid #c5b89a;
-      padding: 12px;
-      margin-bottom: 12px;
-    }
-
-    .score-circle {
-      width: 52px; height: 52px;
-      border-radius: 50%;
-      border: 3px solid #c5b89a;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'Playfair Display', Georgia, serif;
-      font-size: 18px;
-      font-weight: 700;
-      color: #0a0a0a;
-      flex-shrink: 0;
-    }
-
-    .score-info { flex: 1; }
-
-    .score-info-label {
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: #7d6e56;
-      margin-bottom: 2px;
-    }
-
-    .score-verdict-text {
-      font-size: 13px;
-      font-weight: 700;
-      color: #0a0a0a;
-      margin-bottom: 3px;
-    }
-
-    .score-summary-text {
-      font-size: 11px;
-      color: #4a3f2f;
-      line-height: 1.5;
-    }
-
-    /* Claims list */
-    .claims-section-label {
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: #7d6e56;
-      margin-bottom: 6px;
-    }
-
-    .claims-list { margin-bottom: 12px; }
-
-    .claim-item {
-      border-left: 3px solid #c5b89a;
-      padding: 6px 8px;
-      margin-bottom: 5px;
-      background: #ede8dc;
-    }
-
-    .claim-item-text {
-      font-size: 11px;
-      color: #0a0a0a;
-      line-height: 1.45;
-      margin-bottom: 2px;
-    }
-
-    .claim-item-verdict {
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #7d6e56;
-    }
-
-    .claim-item.cl-true  { border-left-color: #2d6a4f; }
-    .claim-item.cl-false { border-left-color: #c8102e; }
-    .claim-item.cl-mixed { border-left-color: #92400e; }
-
-    .results-rule {
-      border: none;
-      border-top: 1px solid #c5b89a;
-      margin: 14px 0;
-    }
-
-    .verdict-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 14px;
-    }
-
-    .result-label {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: #7d6e56;
-    }
-
-    .verdict-badge {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      padding: 3px 9px;
-      border: 1px solid;
-    }
-
-    .verdict-true    { background: #f0f7f4; color: #2d6a4f; border-color: #a8d5c2; }
-    .verdict-false   { background: #fdf2f1; color: #c8102e; border-color: #e8b4b0; }
-    .verdict-mixed   { background: #fffbeb; color: #92400e; border-color: #f6d28a; }
-    .verdict-unknown { background: #ede8dc; color: #4a3f2f; border-color: #c5b89a; }
-
-    /* Bias meter */
-    .bias-section { margin-bottom: 14px; }
-
-    .bias-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 6px;
-    }
-
-    .bias-label-text {
-      font-size: 11px;
-      font-weight: 600;
-      color: #0a0a0a;
-    }
-
-    .bias-track {
-      position: relative;
-      height: 6px;
-      background: linear-gradient(to right, #3b82f6 0%, #c5b89a 50%, #c8102e 100%);
-      border: 1px solid #c5b89a;
-    }
-
-    .bias-center-line {
-      position: absolute;
-      left: 50%;
-      top: -3px;
-      bottom: -3px;
-      width: 1px;
-      background: #4a3f2f;
-    }
-
-    .bias-indicator {
-      position: absolute;
-      top: -4px;
-      width: 4px;
-      height: 14px;
-      background: #0a0a0a;
-      margin-left: -2px;
-      transition: left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-      box-shadow: 0 0 0 1px #f5f0e8;
-    }
-
-    .bias-axis {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 4px;
-      font-size: 8px;
-      font-weight: 500;
-      color: #7d6e56;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-
-    /* Reset button */
-    .btn-reset {
-      width: 100%;
-      padding: 10px 16px;
-      background: transparent;
-      color: #4a3f2f;
-      border: 1px solid #c5b89a;
-      font-family: 'DM Sans', sans-serif;
-      font-size: 11px;
-      font-weight: 500;
-      letter-spacing: 0.05em;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s;
-    }
-
-    .btn-reset:hover { border-color: #0a0a0a; color: #0a0a0a; }
   </style>
 </head>
 <body>
@@ -343,50 +145,6 @@
       <div class="loading-text" id="loadingText">Extracting article text...</div>
     </div>
     <div class="error" id="errorBox"></div>
-
-    <!-- Results panel -->
-    <div id="resultsPanel">
-      <hr class="results-rule" />
-
-      <!-- Credibility score + verdict + summary -->
-      <div class="score-card">
-        <div class="score-circle" id="scoreCircle">—</div>
-        <div class="score-info">
-          <div class="score-info-label">Credibility Score</div>
-          <div class="score-verdict-text" id="scoreVerdict">—</div>
-          <div class="score-summary-text" id="scoreSummary"></div>
-        </div>
-      </div>
-
-      <!-- Claims list -->
-      <div class="claims-section-label" id="claimsHeader">Claims Analysed</div>
-      <div class="claims-list" id="claimsList"></div>
-
-      <hr class="results-rule" />
-
-      <div class="verdict-row">
-        <span class="result-label">Verdict</span>
-        <span class="verdict-badge verdict-unknown" id="verdictBadge">—</span>
-      </div>
-
-      <div class="bias-section">
-        <div class="bias-header">
-          <span class="result-label">Political Bias</span>
-          <span class="bias-label-text" id="biasLabelText">Centre</span>
-        </div>
-        <div class="bias-track">
-          <div class="bias-center-line"></div>
-          <div class="bias-indicator" id="biasIndicator" style="left:50%"></div>
-        </div>
-        <div class="bias-axis">
-          <span>Left</span>
-          <span>Centre</span>
-          <span>Right</span>
-        </div>
-      </div>
-
-      <button class="btn-reset" id="resetBtn">← Analyse Another Page</button>
-    </div>
   </div>
   <div class="footer">
     <span class="status-dot" id="serverDot"></span>
