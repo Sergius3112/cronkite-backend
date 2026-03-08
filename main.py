@@ -621,7 +621,7 @@ async def get_youtube_transcript(url: str):
 
 # ── Education endpoints ───────────────────────────────────────────────────────
 
-@app.get("/modules")
+@app.get("/api/modules")
 async def list_modules(user: dict = Depends(get_current_user)):
     """List all modules owned by the authenticated teacher."""
     sb = get_supabase()
@@ -629,7 +629,7 @@ async def list_modules(user: dict = Depends(get_current_user)):
     return result.data
 
 
-@app.post("/modules", status_code=201)
+@app.post("/api/modules", status_code=201)
 async def create_module(body: ModuleCreate, user: dict = Depends(get_current_user)):
     """Create a new module (teacher only)."""
     sb = get_supabase()
@@ -642,7 +642,7 @@ async def create_module(body: ModuleCreate, user: dict = Depends(get_current_use
     return result.data[0]
 
 
-@app.get("/modules/{module_id}")
+@app.get("/api/modules/{module_id}")
 async def get_module(module_id: str, user: dict = Depends(get_current_user)):
     sb = get_supabase()
     result = sb.table("modules").select("*").eq("id", module_id).execute()
@@ -651,7 +651,7 @@ async def get_module(module_id: str, user: dict = Depends(get_current_user)):
     return result.data[0]
 
 
-@app.get("/modules/{module_id}/assignments")
+@app.get("/api/modules/{module_id}/assignments")
 async def list_assignments(module_id: str, user: dict = Depends(get_current_user)):
     """List all assignments in a module."""
     sb = get_supabase()
