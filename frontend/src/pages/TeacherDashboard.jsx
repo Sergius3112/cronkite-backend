@@ -63,11 +63,11 @@ export default function TeacherDashboard() {
 
   async function loadRecentAssignments(sess) {
     const { data, error } = await sb
-      .from('module_assignments')
+      .from('assignments')
       .select('*, modules(name, focus_area)')
       .order('created_at', { ascending: false })
       .limit(10)
-    if (error) { console.warn('module_assignments query:', error.message); return }
+    if (error) { console.warn('assignments query:', error.message); return }
     const all = data || []
     setRecentAssignments(all)
     const pending = all.filter(a => a.status === 'completed').length
@@ -76,7 +76,7 @@ export default function TeacherDashboard() {
 
   async function loadModuleAssignments(moduleId) {
     const { data, error } = await sb
-      .from('module_assignments')
+      .from('assignments')
       .select('*')
       .eq('module_id', moduleId)
       .order('created_at', { ascending: true })
@@ -86,15 +86,15 @@ export default function TeacherDashboard() {
 
   async function loadModuleResults(moduleId) {
     const { data: assignments } = await sb
-      .from('module_assignments')
+      .from('assignments')
       .select('id')
       .eq('module_id', moduleId)
     if (!assignments?.length) { setModuleResults(prev => ({ ...prev, [moduleId]: [] })); return }
     const ids = assignments.map(a => a.id)
     const { data, error } = await sb
       .from('student_results')
-      .select('*, module_assignments(article_title), users(name, email)')
-      .in('module_assignment_id', ids)
+      .select('*, assignments(article_title), users(name, email)')
+      .in('assignment_id', ids)
       .order('completed_at', { ascending: false })
     if (error) throw error
     setModuleResults(prev => ({ ...prev, [moduleId]: data || [] }))
@@ -115,7 +115,7 @@ export default function TeacherDashboard() {
     const email = emailEl.value.trim()
     if (!url) { alert('Please enter an article URL.'); return }
     try {
-      const { error } = await sb.from('module_assignments').insert({
+      const { error } = await sb.from('assignments').insert({
         module_id:     moduleId,
         article_url:   url,
         article_title: title || url,
@@ -377,7 +377,7 @@ function ModuleCard({ mod, expanded, assignments, results, onToggle, onAddAssign
                           return (
                             <tr key={r.id} className="border-b border-border/40 last:border-0">
                               <td className="py-2 px-2 text-ink-mid">{r.users?.name || r.users?.email || r.student_id}</td>
-                              <td className="py-2 px-2 text-ink-mid truncate max-w-[160px]">{r.module_assignments?.article_title || '—'}</td>
+                              <td className="py-2 px-2 text-ink-mid truncate max-w-[160px]">{r.assignments?.article_title || '—'}</td>
                               <td className="py-2 px-2">{typeof score === 'number' ? <span className={`${cls} px-2 py-0.5 rounded-full text-[11px] font-bold`}>{score}</span> : '—'}</td>
                               <td className="py-2 px-2 text-ink-mid">{verdict}</td>
                               <td className="py-2 px-2 text-ink-light">{r.completed_at ? format(new Date(r.completed_at), 'd MMM') : '—'}</td>

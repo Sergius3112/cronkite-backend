@@ -48,7 +48,7 @@ export default function StudentDashboard() {
 
   async function loadAssignments(sess) {
     const { data, error } = await sb
-      .from('module_assignments')
+      .from('assignments')
       .select('*, modules(id, name, focus_area, description)')
       .eq('student_email', sess.user.email)
       .order('created_at', { ascending: false })
@@ -71,16 +71,16 @@ export default function StudentDashboard() {
       if (!fresh) throw new Error('Session expired.')
 
       const { error: uErr } = await sb.from('student_results').upsert({
-        student_id:           fresh.user.id,
-        module_assignment_id: assignment.id,
-        analysis_json:        {},
-        completed_at:         new Date().toISOString(),
-      }, { onConflict: 'student_id,module_assignment_id' })
+        student_id:    fresh.user.id,
+        assignment_id: assignment.id,
+        analysis_json: {},
+        completed_at:  new Date().toISOString(),
+      }, { onConflict: 'student_id,assignment_id' })
 
       if (uErr) throw uErr
 
       const { error: sErr } = await sb
-        .from('module_assignments')
+        .from('assignments')
         .update({ status: 'completed' })
         .eq('id', assignment.id)
 
