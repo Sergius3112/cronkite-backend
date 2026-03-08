@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel
 from groq import Groq
@@ -434,19 +435,29 @@ def search_claim(tavily: TavilyClient, claim: str) -> list[dict]:
     return results[:5]
 
 
-# ── Static HTML pages ─────────────────────────────────────────────────────────
+# ── React SPA ─────────────────────────────────────────────────────────────────
+_DIST = BASE_DIR / "frontend" / "dist"
+
+@app.get("/")
+async def serve_root():
+    return FileResponse(_DIST / "index.html")
 
 @app.get("/teacher")
 async def serve_teacher():
-    return FileResponse(BASE_DIR / "teacher.html")
+    return FileResponse(_DIST / "index.html")
 
 @app.get("/student")
 async def serve_student():
-    return FileResponse(BASE_DIR / "student.html")
+    return FileResponse(_DIST / "index.html")
 
 @app.get("/app")
 async def serve_app():
     return FileResponse(BASE_DIR / "cronkite-edu.html")
+
+# Must be last — catch-all for static assets
+import os
+if os.path.exists(_DIST / "assets"):
+    app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

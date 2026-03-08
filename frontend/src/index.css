@@ -1,0 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: #f5f0e8;
+  color: #0a0a0a;
+}
+
+@layer components {
+  .input-base {
+    @apply font-sans text-sm text-ink bg-paper border border-border rounded-lg px-3 py-2 outline-none transition-colors w-full focus:border-ink;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-1.5 bg-red hover:bg-red-dark text-paper text-sm font-semibold px-4 py-2 rounded-lg transition-all hover:-translate-y-px active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none cursor-pointer;
+  }
+}
