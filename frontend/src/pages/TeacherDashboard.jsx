@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { sb } from '../lib/supabase'
 import { ChevronDown, Plus, LogOut, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
@@ -16,6 +16,7 @@ const KS_LABELS = { ks2:'KS2', ks3:'KS3', ks4:'KS4', ks5:'KS5' }
 
 export default function TeacherDashboard() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [session, setSession] = useState(null)
   const [modules, setModules] = useState([])
   const [recentAssignments, setRecentAssignments] = useState([])
@@ -169,9 +170,19 @@ export default function TeacherDashboard() {
               <span className="font-serif text-lg text-paper">Cronkite</span>
               <span className="text-xs text-red uppercase tracking-widest">Teacher</span>
             </div>
-            <nav className="hidden sm:flex items-center gap-1">
+            <nav className="flex items-center gap-1">
               {[['Modules','/modules'],['Articles','/articles'],['Reports','/reports'],['Updates','/updates']].map(([label,href]) => (
-                <Link key={href} to={href} className="px-3 py-1.5 text-xs font-medium rounded text-paper-darker hover:text-paper hover:bg-white/10 transition-colors">{label}</Link>
+                <Link
+                  key={href}
+                  to={href}
+                  className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                    pathname === href
+                      ? 'bg-red text-paper'
+                      : 'text-paper-darker hover:text-paper hover:bg-white/10'
+                  }`}
+                >
+                  {label}
+                </Link>
               ))}
             </nav>
           </div>
