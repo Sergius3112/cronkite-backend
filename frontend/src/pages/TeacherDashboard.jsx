@@ -27,7 +27,7 @@ export default function TeacherDashboard() {
   const [moduleResults, setModuleResults] = useState({})
 
   // Create form state
-  const [form, setForm] = useState({ name:'', description:'', focus_area:'', key_stage:'' })
+  const [form, setForm] = useState({ title:'', description:'', focus_point:'', key_stage:'' })
   const [formError, setFormError] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -54,7 +54,6 @@ export default function TeacherDashboard() {
       .from('modules')
       .select('*')
       .eq('teacher_id', sess.user.id)
-      .eq('status', 'active')
       .order('created_at', { ascending: false })
     if (error) throw error
     setModules(data || [])
@@ -64,7 +63,7 @@ export default function TeacherDashboard() {
   async function loadRecentAssignments(sess) {
     const { data, error } = await sb
       .from('assignments')
-      .select('*, modules(name, focus_area)')
+      .select('*, modules(title, focus_point)')
       .order('created_at', { ascending: false })
       .limit(10)
     if (error) { console.warn('assignments query:', error.message); return }
@@ -130,9 +129,9 @@ export default function TeacherDashboard() {
 
   async function createModule() {
     setFormError('')
-    if (!form.name)       { setFormError('Module name is required.'); return }
-    if (!form.focus_area) { setFormError('Please select a focus area.'); return }
-    if (!form.key_stage)  { setFormError('Please select a key stage.'); return }
+    if (!form.title)       { setFormError('Module name is required.'); return }
+    if (!form.focus_point) { setFormError('Please select a focus area.'); return }
+    if (!form.key_stage)   { setFormError('Please select a key stage.'); return }
 
     setCreating(true)
     try {
@@ -140,14 +139,13 @@ export default function TeacherDashboard() {
       if (!fresh) throw new Error('Session expired — please sign in again.')
       const { error } = await sb.from('modules').insert({
         teacher_id:  fresh.user.id,
-        name:        form.name,
-        description: form.description || null,
-        focus_area:  form.focus_area,
+        title:       form.title,
+        description: form.description || '',
+        focus_point: form.focus_point,
         key_stage:   form.key_stage,
-        status:      'active',
       })
       if (error) throw error
-      setForm({ name:'', description:'', focus_area:'', key_stage:'' })
+      setForm({ title:'', description:'', focus_point:'', key_stage:'' })
       await loadModules(fresh)
     } catch (e) {
       console.error('createModule:', e)
@@ -207,11 +205,11 @@ export default function TeacherDashboard() {
             <Field label="Module Name">
               <input
                 className="input-base" placeholder="e.g. Climate Science Claims"
-                value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
               />
             </Field>
             <Field label="Focus Area">
-              <select className="input-base" value={form.focus_area} onChange={e => setForm(f => ({ ...f, focus_area: e.target.value }))}>
+              <select className="input-base" value={form.focus_point} onChange={e => setForm(f => ({ ...f, focus_point: e.target.value }))}>
                 <option value="">Select a focus…</option>
                 {Object.entries(FOCUS_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
               </select>
@@ -291,9 +289,9 @@ function ModuleCard({ mod, expanded, assignments, results, onToggle, onAddAssign
         className="w-full flex items-start gap-3 p-4 text-left hover:bg-black/[0.02] transition-colors"
       >
         <div className="flex-1">
-          <div className="font-serif text-base text-ink mb-1">{mod.name || mod.title || 'Untitled'}</div>
+          <div className="font-serif text-base text-ink mb-1">{mod.title || 'Untitled'}</div>
           <div className="flex items-center gap-2 flex-wrap">
-            {mod.focus_area  && <FocusBadge val={mod.focus_area} />}
+            {mod.focus_point && <FocusBadge val={mod.focus_point} />}
             {mod.key_stage   && <span className="bg-ink text-paper text-[10px] font-bold uppercase px-2 py-0.5 rounded">{KS_LABELS[mod.key_stage] || mod.key_stage.toUpperCase()}</span>}
           </div>
         </div>

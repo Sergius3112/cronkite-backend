@@ -49,7 +49,7 @@ export default function StudentDashboard() {
   async function loadAssignments(sess) {
     const { data, error } = await sb
       .from('assignments')
-      .select('*, modules(id, name, focus_area, description)')
+      .select('*, modules(id, title, focus_point, description)')
       .eq('student_email', sess.user.email)
       .order('created_at', { ascending: false })
 
@@ -202,8 +202,8 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete }) {
         <p className="text-xs text-ink-light truncate mb-2">{a.article_url}</p>
         {mod && (
           <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <span className="text-[10px] font-semibold text-ink-mid">{mod.name}</span>
-            {mod.focus_area && <span className="bg-paper border border-border text-[10px] font-semibold text-ink-mid uppercase tracking-wide px-2 py-0.5 rounded-full">{FOCUS_LABELS[mod.focus_area] || mod.focus_area}</span>}
+            <span className="text-[10px] font-semibold text-ink-mid">{mod.title}</span>
+            {mod.focus_point && <span className="bg-paper border border-border text-[10px] font-semibold text-ink-mid uppercase tracking-wide px-2 py-0.5 rounded-full">{FOCUS_LABELS[mod.focus_point] || mod.focus_point}</span>}
           </div>
         )}
         {a.due_date && <p className="text-[10px] text-ink-light mb-2">Due {format(new Date(a.due_date), 'd MMM yyyy')}</p>}
