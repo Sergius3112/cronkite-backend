@@ -3,7 +3,7 @@ import { Newspaper } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
-  { label: 'Modules', href: '/' },
+  { label: 'Modules', href: '/modules' },
   { label: 'Articles', href: '/articles' },
   { label: 'Reports', href: '/reports' },
   { label: 'Updates', href: '/updates' },
@@ -16,7 +16,7 @@ export function AppHeader() {
     <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-10">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-14 items-center gap-8">
-          <Link to="/" className="flex items-center gap-2.5">
+          <Link to="/modules" className="flex items-center gap-2.5">
             <Newspaper className="h-6 w-6 text-primary" />
             <span className="text-xl font-bold tracking-tight font-['Playfair_Display',Georgia,serif]">Cronkite</span>
           </Link>
