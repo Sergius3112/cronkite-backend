@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { sb } from '../lib/supabase'
 import { ChevronDown, Plus, LogOut, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
@@ -164,9 +164,16 @@ export default function TeacherDashboard() {
       {/* Header */}
       <header className="bg-ink border-b-2 border-red sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-baseline gap-2">
-            <span className="font-serif text-lg text-paper">Cronkite</span>
-            <span className="text-xs text-red uppercase tracking-widest">Teacher Dashboard</span>
+          <div className="flex items-center gap-6">
+            <div className="flex items-baseline gap-2">
+              <span className="font-serif text-lg text-paper">Cronkite</span>
+              <span className="text-xs text-red uppercase tracking-widest">Teacher</span>
+            </div>
+            <nav className="hidden sm:flex items-center gap-1">
+              {[['Modules','/modules'],['Articles','/articles'],['Reports','/reports'],['Updates','/updates']].map(([label,href]) => (
+                <Link key={href} to={href} className="px-3 py-1.5 text-xs font-medium rounded text-paper-darker hover:text-paper hover:bg-white/10 transition-colors">{label}</Link>
+              ))}
+            </nav>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-paper-darker hidden sm:block">
