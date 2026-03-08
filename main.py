@@ -709,3 +709,14 @@ async def get_my_results(user: dict = Depends(get_current_user)):
         .execute()
     )
     return result.data
+
+
+# ── SPA catch-all — must be the very last route ───────────────────────────────
+# Serves index.html for any path not matched by an API route above,
+# allowing React Router to handle client-side navigation.
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    index = _DIST / "index.html"
+    if index.exists():
+        return FileResponse(str(index))
+    return FileResponse(str(BASE_DIR / "cronkite-edu.html"))
