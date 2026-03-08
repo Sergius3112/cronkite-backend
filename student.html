@@ -507,84 +507,101 @@
     // ── Inbox ──
     async function loadInbox() {
       const container = document.getElementById('inbox-container');
+      container.innerHTML = '<div style="padding:24px;color:var(--ink-light);font-size:13px"><span class="spinner"></span>Loading your inbox…</div>';
 
-      // Fetch all modules (requires permissive RLS)
-      const { data: modules, error: mErr } = await sb
-        .from('modules')
-        .select('id, title, description, focus_point')
-        .order('created_at', { ascending: true });
+      try {
+        // Verify session before querying
+        const { data: { session }, error: sessionErr } = await sb.auth.getSession();
+        if (sessionErr || !session) {
+          container.innerHTML = `<div class="empty-state"><h3>Session expired</h3><p>Please sign out and sign in again.</p></div>`;
+          return;
+        }
 
-      if (mErr) {
-        container.innerHTML = `<div class="empty-state"><h3>Could not load modules</h3><p>${escapeHtml(mErr.message)}</p></div>`;
-        return;
-      }
+        // Fetch all modules (requires permissive RLS)
+        const { data: modules, error: mErr } = await sb
+          .from('modules')
+          .select('id, title, description, focus_point')
+          .order('created_at', { ascending: true });
 
-      if (!modules || modules.length === 0) {
-        document.getElementById('rls-notice').style.display = 'block';
-        container.innerHTML = '';
-        return;
-      }
+        if (mErr) {
+          console.error('loadInbox modules error:', mErr);
+          container.innerHTML = `<div class="empty-state"><h3>Could not load modules</h3><code style="font-size:12px;color:var(--ink-mid)">${escapeHtml(mErr.message)}</code></div>`;
+          return;
+        }
 
-      // Fetch all assignments
-      const { data: assignments, error: aErr } = await sb
-        .from('assignments')
-        .select('id, module_id, article_title, article_url')
-        .order('created_at', { ascending: true });
+        if (!modules || modules.length === 0) {
+          document.getElementById('rls-notice').style.display = 'block';
+          container.innerHTML = '';
+          return;
+        }
 
-      if (aErr) {
-        container.innerHTML = `<div class="empty-state"><h3>Could not load assignments</h3><p>${escapeHtml(aErr.message)}</p></div>`;
-        return;
-      }
+        // Fetch all assignments
+        const { data: assignments, error: aErr } = await sb
+          .from('assignments')
+          .select('id, module_id, article_title, article_url')
+          .order('created_at', { ascending: true });
 
-      // Fetch student's own results
-      const { data: myResults } = await sb
-        .from('student_results')
-        .select('assignment_id, analysis_json, completed_at')
-        .eq('student_id', currentUser.id);
+        if (aErr) {
+          console.error('loadInbox assignments error:', aErr);
+          container.innerHTML = `<div class="empty-state"><h3>Could not load assignments</h3><code style="font-size:12px;color:var(--ink-mid)">${escapeHtml(aErr.message)}</code></div>`;
+          return;
+        }
 
-      const resultMap = {};
-      (myResults || []).forEach(r => { resultMap[r.assignment_id] = r; });
+        // Fetch student's own results
+        const { data: myResults, error: rErr } = await sb
+          .from('student_results')
+          .select('assignment_id, analysis_json, completed_at')
+          .eq('student_id', session.user.id);
 
-      // Group assignments by module
-      const assignmentsByModule = {};
-      (assignments || []).forEach(a => {
-        if (!assignmentsByModule[a.module_id]) assignmentsByModule[a.module_id] = [];
-        assignmentsByModule[a.module_id].push(a);
-      });
+        if (rErr) console.error('loadInbox results error:', rErr);
 
-      container.innerHTML = '';
+        const resultMap = {};
+        (myResults || []).forEach(r => { resultMap[r.assignment_id] = r; });
 
-      let anyAssignments = false;
-
-      modules.forEach(mod => {
-        const modAssignments = assignmentsByModule[mod.id] || [];
-        if (modAssignments.length === 0) return;
-
-        anyAssignments = true;
-
-        const group = document.createElement('div');
-        group.className = 'module-group';
-
-        group.innerHTML = `
-          <div class="module-group-header">
-            <div class="module-group-title">${escapeHtml(mod.title)}</div>
-            ${mod.focus_point ? `<span class="focus-badge">${escapeHtml(mod.focus_point)}</span>` : ''}
-          </div>
-          ${mod.description ? `<div class="module-desc-small">${escapeHtml(mod.description)}</div>` : ''}
-        `;
-
-        modAssignments.forEach(a => {
-          const result = resultMap[a.id];
-          const isDone = !!result;
-          const card = buildAssignmentCard(a, result, isDone);
-          group.appendChild(card);
+        // Group assignments by module
+        const assignmentsByModule = {};
+        (assignments || []).forEach(a => {
+          if (!assignmentsByModule[a.module_id]) assignmentsByModule[a.module_id] = [];
+          assignmentsByModule[a.module_id].push(a);
         });
 
-        container.appendChild(group);
-      });
+        container.innerHTML = '';
 
-      if (!anyAssignments) {
-        container.innerHTML = '<div class="empty-state"><h3>No assignments yet</h3><p>Your teacher hasn\'t assigned any articles yet. Check back soon.</p></div>';
+        let anyAssignments = false;
+
+        modules.forEach(mod => {
+          const modAssignments = assignmentsByModule[mod.id] || [];
+          if (modAssignments.length === 0) return;
+
+          anyAssignments = true;
+
+          const group = document.createElement('div');
+          group.className = 'module-group';
+
+          group.innerHTML = `
+            <div class="module-group-header">
+              <div class="module-group-title">${escapeHtml(mod.title)}</div>
+              ${mod.focus_point ? `<span class="focus-badge">${escapeHtml(mod.focus_point)}</span>` : ''}
+            </div>
+            ${mod.description ? `<div class="module-desc-small">${escapeHtml(mod.description)}</div>` : ''}
+          `;
+
+          modAssignments.forEach(a => {
+            const result = resultMap[a.id];
+            const isDone = !!result;
+            const card = buildAssignmentCard(a, result, isDone);
+            group.appendChild(card);
+          });
+
+          container.appendChild(group);
+        });
+
+        if (!anyAssignments) {
+          container.innerHTML = '<div class="empty-state"><h3>No assignments yet</h3><p>Your teacher hasn\'t assigned any articles yet. Check back soon.</p></div>';
+        }
+      } catch (e) {
+        console.error('loadInbox exception:', e);
+        container.innerHTML = `<div class="empty-state"><h3>Something went wrong</h3><code style="font-size:12px;color:var(--ink-mid)">${escapeHtml(e.message || String(e))}</code><br><br><button onclick="loadInbox()" style="font:600 12px/1 'DM Sans',sans-serif;background:var(--red);color:#fff;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;margin-top:8px">Retry</button></div>`;
       }
     }
 
@@ -638,22 +655,34 @@
       const btn = document.querySelector(`#card-${assignmentId} .btn-outline`);
       if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Saving…'; }
 
-      // Upsert with empty analysis (student completed without full AI result)
-      const { error } = await sb.from('student_results').upsert({
-        student_id: currentUser.id,
-        assignment_id: assignmentId,
-        analysis_json: {},
-        completed_at: new Date().toISOString()
-      }, { onConflict: 'student_id,assignment_id' });
+      try {
+        const { data: { session }, error: sessionErr } = await sb.auth.getSession();
+        if (sessionErr || !session) {
+          toast('Session expired — please sign out and sign in again.', 'error');
+          return;
+        }
 
-      if (error) {
-        toast('Error saving: ' + error.message, 'error');
+        const { error } = await sb.from('student_results').upsert({
+          student_id: session.user.id,
+          assignment_id: assignmentId,
+          analysis_json: {},
+          completed_at: new Date().toISOString()
+        }, { onConflict: 'student_id,assignment_id' });
+
+        if (error) {
+          console.error('markComplete error:', error);
+          toast('Error saving: ' + error.message, 'error');
+          return;
+        }
+
+        toast('Marked as complete!');
+        await loadInbox();
+      } catch (e) {
+        console.error('markComplete exception:', e);
+        toast('Unexpected error: ' + (e.message || String(e)), 'error');
+      } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Mark Complete'; }
-        return;
       }
-
-      toast('Marked as complete!');
-      await loadInbox();
     }
 
     // ── Utils ──

@@ -655,33 +655,38 @@
       const list = document.getElementById('modules-list');
       list.innerHTML = '<div style="padding:24px;color:var(--ink-light);font-size:13px"><span class="spinner"></span>Loading modules…</div>';
 
-      // Re-fetch the session directly so we always have a fresh, valid token
-      const { data: { session }, error: sessionErr } = await sb.auth.getSession();
-      if (sessionErr || !session) {
-        showModuleError(list, sessionErr?.message || 'Session expired — please sign out and sign in again.');
-        return;
+      try {
+        // Re-fetch the session directly so we always have a fresh, valid token
+        const { data: { session }, error: sessionErr } = await sb.auth.getSession();
+        if (sessionErr || !session) {
+          showModuleError(list, sessionErr?.message || 'Session expired — please sign out and sign in again.');
+          return;
+        }
+
+        const { data, error } = await sb
+          .from('modules')
+          .select('*')
+          .eq('teacher_id', session.user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('loadModules query error:', error);
+          showModuleError(list, error.message);
+          return;
+        }
+
+        list.innerHTML = '';
+
+        if (!data || data.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No modules yet</h3><p>Create your first module above to get started.</p></div>';
+          return;
+        }
+
+        data.forEach(mod => list.appendChild(buildModuleCard(mod)));
+      } catch (e) {
+        console.error('loadModules exception:', e);
+        showModuleError(list, e.message || String(e));
       }
-
-      const { data, error } = await sb
-        .from('modules')
-        .select('*')
-        .eq('teacher_id', session.user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('loadModules query error:', error);
-        showModuleError(list, error.message);
-        return;
-      }
-
-      list.innerHTML = '';
-
-      if (!data || data.length === 0) {
-        list.innerHTML = '<div class="empty-state"><h3>No modules yet</h3><p>Create your first module above to get started.</p></div>';
-        return;
-      }
-
-      data.forEach(mod => list.appendChild(buildModuleCard(mod)));
     }
 
     function showModuleError(list, msg) {
@@ -705,26 +710,38 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span>Creating…';
 
-      const { error } = await sb.from('modules').insert({
-        teacher_id: currentUser.id,
-        title,
-        description: desc || null,
-        focus_point: focus
-      });
+      try {
+        const { data: { session }, error: sessionErr } = await sb.auth.getSession();
+        if (sessionErr || !session) {
+          toast('Session expired — please sign out and sign in again.', 'error');
+          return;
+        }
 
-      btn.disabled = false;
-      btn.textContent = 'Create Module';
+        const { error } = await sb.from('modules').insert({
+          teacher_id: session.user.id,
+          title,
+          description: desc || null,
+          focus_point: focus
+        });
 
-      if (error) {
-        toast('Error: ' + error.message, 'error');
-        return;
+        if (error) {
+          console.error('createModule error:', error);
+          toast('Error creating module: ' + error.message, 'error');
+          return;
+        }
+
+        document.getElementById('mod-title').value = '';
+        document.getElementById('mod-focus').value = '';
+        document.getElementById('mod-desc').value = '';
+        toast('Module created!');
+        await loadModules();
+      } catch (e) {
+        console.error('createModule exception:', e);
+        toast('Unexpected error: ' + (e.message || String(e)), 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create Module';
       }
-
-      document.getElementById('mod-title').value = '';
-      document.getElementById('mod-focus').value = '';
-      document.getElementById('mod-desc').value = '';
-      toast('Module created!');
-      await loadModules();
     }
 
     document.getElementById('create-module-btn').addEventListener('click', createModule);
