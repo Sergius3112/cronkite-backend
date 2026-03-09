@@ -18,15 +18,46 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
+@app.on_event("startup")
+async def startup_check():
+    checks = {
+        "SUPABASE_URL":        os.environ.get("SUPABASE_URL"),
+        "SUPABASE_SERVICE_KEY": os.environ.get("SUPABASE_SERVICE_KEY"),
+        "SUPABASE_ANON_KEY":   os.environ.get("SUPABASE_ANON_KEY"),
+        "ANTHROPIC_API_KEY":   os.environ.get("ANTHROPIC_API_KEY"),
+        "GROQ_API_KEY":        os.environ.get("GROQ_API_KEY"),
+        "TAVILY_API_KEY":      os.environ.get("TAVILY_API_KEY"),
+    }
+    logger.info("=== Cronkite startup credential check ===")
+    for name, val in checks.items():
+        logger.info(f"  {'[OK]' if val else '[MISSING]'} {name}")
+    if not checks["SUPABASE_URL"]:
+        logger.warning("SUPABASE_URL not set — all Supabase calls will fail")
+    if not checks["SUPABASE_SERVICE_KEY"] and not checks["SUPABASE_ANON_KEY"]:
+        logger.warning("Neither SUPABASE_SERVICE_KEY nor SUPABASE_ANON_KEY set — Supabase will fail")
+    if not checks["ANTHROPIC_API_KEY"]:
+        logger.warning("ANTHROPIC_API_KEY not set — /api/analyse will return 503")
+    logger.info("===========================================")
+
+
 # ── Supabase client (lazy init) ───────────────────────────────────────────────
 
 def get_supabase():
     url = os.environ.get("SUPABASE_URL", "")
-    key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    # Accept either the service role key or the anon key
+    key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_ANON_KEY", "")
     if not url or not key:
         raise HTTPException(status_code=503, detail="Supabase not configured")
     from supabase import create_client
     return create_client(url, key)
+
+
+def get_supabase_as_user(token: str):
+    """Returns a Supabase client with the user's JWT set on the PostgREST layer.
+    Required for RLS-protected table operations when using the anon key."""
+    supa = get_supabase()
+    supa.postgrest.auth(token)
+    return supa
 
 
 # ── Auth dependency ───────────────────────────────────────────────────────────
@@ -716,7 +747,7 @@ async def get_my_results(user: dict = Depends(get_current_user)):
 # ── AI article analysis (Anthropic + web search) ──────────────────────────────
 
 @app.post("/api/analyse")
-async def api_analyse(req: ApiAnalyseRequest, user: dict = Depends(get_current_user)):
+async def api_analyse(req: ApiAnalyseRequest, authorization: str = Header(None), user: dict = Depends(get_current_user)):
     """Analyse a URL using Claude AI with web search. Saves result to the articles table."""
     import anthropic as _anthropic
 
@@ -777,8 +808,9 @@ async def api_analyse(req: ApiAnalyseRequest, user: dict = Depends(get_current_u
         # Alias for frontend compatibility
         data["overall_credibility_score"] = data.get("credibility_score", 50)
 
-        # Save to articles table in Supabase
-        supa = get_supabase()
+        # Save to articles table — use user-scoped client so RLS auth.uid() resolves correctly
+        token = (authorization or "").split(" ")[-1]
+        supa = get_supabase_as_user(token)
         insert_res = supa.table("articles").insert({
             "teacher_id": user["sub"],
             "url": req.url,
