@@ -26,7 +26,9 @@ export default function StudentDashboard() {
   const [completing, setCompleting] = useState({})
 
   useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 3000)
     sb.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(timer)
       if (!session) { navigate('/', { replace: true }); return }
       setSession(session)
       loadAll(session)

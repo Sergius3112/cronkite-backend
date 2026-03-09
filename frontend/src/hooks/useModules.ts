@@ -4,17 +4,27 @@ import { supabase, type Module } from '@/lib/supabase';
 export function useModules() {
   const [modules, setModules] = useState<Module[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchModules = useCallback(async () => {
     setLoading(true);
+    setError(null);
+
+    // Get current session so we can filter by teacher_id
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setLoading(false); return; }
+
     // SELECT aliasing maps our schema columns to the Module type:
     // title → name, focus_point → focus_area
-    const { data, error } = await supabase
+    const { data, error: qErr } = await supabase
       .from('modules')
       .select('id, title as name, description, focus_point as focus_area, key_stage, teacher_id, created_at')
+      .eq('teacher_id', session.user.id)
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
+    if (qErr) {
+      setError(qErr.message);
+    } else if (data) {
       setModules(data.map((m: any) => ({
         ...m,
         status: 'active',
@@ -61,5 +71,5 @@ export function useModules() {
     setModules(prev => prev.filter(m => m.id !== id));
   };
 
-  return { modules, loading, createModule, updateModule, archiveModule, refetch: fetchModules };
+  return { modules, loading, error, createModule, updateModule, archiveModule, refetch: fetchModules };
 }

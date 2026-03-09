@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import type { Module } from '@/lib/supabase';
 
 const Modules = () => {
-  const { modules, loading, createModule, updateModule, archiveModule } = useModules();
+  const { modules, loading, error: modulesError, createModule, updateModule, archiveModule } = useModules();
   const { toast } = useToast();
 
   const [search, setSearch] = useState('');
@@ -94,6 +94,13 @@ const Modules = () => {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Error */}
+        {modulesError && (
+          <div className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            Failed to load modules: {modulesError}
+          </div>
+        )}
 
         {/* Module grid */}
         {loading ? (

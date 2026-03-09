@@ -23,11 +23,19 @@ export function AppLayout({ children }) {
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  // Use detected role when it's authoritative; otherwise infer from route.
-  // /student is the only student-only route — everything else is a teacher route.
-  const effectiveRole = (role === 'teacher' || role === 'admin')
-    ? role
-    : pathname === '/student' ? 'student' : 'teacher'
+  // Infer nav role from route + detected role.
+  // Teacher-only routes always get teacher nav; /student always gets student nav.
+  // On shared routes (/modules), fall back to detected role or teacher.
+  const TEACHER_ROUTES = ['/teacher', '/articles', '/reports', '/updates']
+  const effectiveRole = TEACHER_ROUTES.includes(pathname)
+    ? 'teacher'
+    : pathname === '/student'
+      ? 'student'
+      : (role === 'teacher' || role === 'admin')
+        ? role
+        : role === 'student'
+          ? 'student'
+          : 'teacher'
   const items = NAV.filter(n => n.roles.includes(effectiveRole))
   const userName = session?.user?.user_metadata?.full_name || session?.user?.email || ''
 
