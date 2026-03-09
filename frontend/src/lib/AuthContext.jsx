@@ -9,7 +9,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Safety timeout — if getSession or fetchRole hangs, unblock the UI after 3s
+    const timer = setTimeout(() => setLoading(false), 3000)
+
     sb.auth.getSession().then(async ({ data: { session } }) => {
+      clearTimeout(timer)
       setSession(session)
       if (session) setRole(await fetchRole(session.user.id))
       setLoading(false)
@@ -19,7 +23,7 @@ export function AuthProvider({ children }) {
       setSession(session)
       setRole(session ? await fetchRole(session.user.id) : null)
     })
-    return () => subscription.unsubscribe()
+    return () => { clearTimeout(timer); subscription.unsubscribe() }
   }, [])
 
   return <AuthCtx.Provider value={{ session, role, loading }}>{children}</AuthCtx.Provider>

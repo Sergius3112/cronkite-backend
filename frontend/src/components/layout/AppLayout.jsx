@@ -23,7 +23,12 @@ export function AppLayout({ children }) {
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const items = NAV.filter(n => !role || n.roles.includes(role))
+  // Use detected role when it's authoritative; otherwise infer from route.
+  // /student is the only student-only route — everything else is a teacher route.
+  const effectiveRole = (role === 'teacher' || role === 'admin')
+    ? role
+    : pathname === '/student' ? 'student' : 'teacher'
+  const items = NAV.filter(n => n.roles.includes(effectiveRole))
   const userName = session?.user?.user_metadata?.full_name || session?.user?.email || ''
 
   async function signOut() {
@@ -37,7 +42,7 @@ export function AppLayout({ children }) {
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-5 h-14 border-b border-border shrink-0">
           <Link
-            to={role === 'student' ? '/student' : '/modules'}
+            to={effectiveRole === 'student' ? '/student' : '/modules'}
             className="flex items-center gap-2 min-w-0"
             onClick={() => setMobileOpen(false)}
           >
