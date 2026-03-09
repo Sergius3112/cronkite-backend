@@ -65,6 +65,8 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
     if (!moduleId || !article) return;
     setSaving(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
       const { error } = await supabase.from('assignments').insert({
         module_id: moduleId,
         article_id: article.id,
@@ -73,6 +75,7 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
         student_email: studentEmail.trim() || null,
         due_date: dueDate || null,
         status: 'assigned',
+        teacher_id: session.user.id,
       });
       if (error) throw error;
       setDone(true);
