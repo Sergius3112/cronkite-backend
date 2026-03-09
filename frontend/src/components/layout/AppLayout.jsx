@@ -20,6 +20,37 @@ const STUDENT_NAV = [
   { label: 'Modules',       href: '/student/modules', icon: BookOpen },
 ]
 
+// Dotless i (U+0131) removes the dot; green asterisk is positioned where the dot was
+function CronkiteWordmark() {
+  return (
+    <span
+      aria-label="Cronkite"
+      style={{ fontFamily: "'Playfair Display', Georgia, serif", fontWeight: 700, color: '#1a1a1a' }}
+    >
+      {'Cronk'}
+      <span style={{ position: 'relative', display: 'inline-block' }}>
+        {'\u0131'}
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: '-0.35em',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            color: '#22c55e',
+            fontSize: '0.7em',
+            lineHeight: 1,
+            pointerEvents: 'none',
+          }}
+        >
+          *
+        </span>
+      </span>
+      {'te'}
+    </span>
+  )
+}
+
 export function AppLayout({ children }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
@@ -52,8 +83,8 @@ export function AppLayout({ children }) {
             className="flex items-center gap-2 min-w-0"
             onClick={() => setMobileOpen(false)}
           >
-            <Newspaper className="h-5 w-5 text-primary shrink-0" />
-            <span className="font-bold text-base font-serif truncate">Cronkite</span>
+            <Newspaper className="h-5 w-5 shrink-0" style={{ color: '#22c55e' }} />
+            <span className="text-base truncate"><CronkiteWordmark /></span>
           </Link>
         </div>
 
@@ -124,7 +155,7 @@ export function AppLayout({ children }) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="font-bold font-serif">Cronkite</span>
+          <CronkiteWordmark />
         </div>
 
         <main className="flex-1 overflow-y-auto">
