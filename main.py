@@ -956,7 +956,7 @@ async def api_notify(req: NotifyRequest):
 
     try:
         params = {
-            "from": "Cronkite <notifications@cronkite.education>",
+            "from": "Cronkite <onboarding@resend.dev>",
             "to": [req.student_email],
             "subject": f"New article assigned: {req.article_title}",
             "html": html,
