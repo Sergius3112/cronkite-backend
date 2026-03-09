@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { useModules } from '@/hooks/useModules';
 import { useToast } from '@/hooks/use-toast';
 import type { Article } from '@/lib/supabase';
+
+interface ModuleOption {
+  id: string;
+  name: string;
+}
 
 interface AssignArticleDialogProps {
   article: Article | null;
@@ -16,13 +20,46 @@ interface AssignArticleDialogProps {
 }
 
 export function AssignArticleDialog({ article, open, onOpenChange }: AssignArticleDialogProps) {
-  const { modules } = useModules();
   const { toast } = useToast();
+  const [modules, setModules] = useState<ModuleOption[]>([]);
+  const [loadingModules, setLoadingModules] = useState(false);
   const [moduleId, setModuleId] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+
+  // Fetch modules fresh every time the dialog opens, using the authenticated session
+  useEffect(() => {
+    if (!open) return;
+    async function fetchModules() {
+      setLoadingModules(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('[AssignArticleDialog] session:', session?.user?.id);
+        if (!session) {
+          console.warn('[AssignArticleDialog] No session found — cannot fetch modules');
+          setModules([]);
+          return;
+        }
+        const { data, error } = await supabase
+          .from('modules')
+          .select('id, title')
+          .eq('teacher_id', session.user.id)
+          .order('created_at', { ascending: false });
+        console.log('[AssignArticleDialog] modules data:', data, 'error:', error);
+        if (error) throw error;
+        setModules((data ?? []).map((m: any) => ({ id: m.id, name: m.title })));
+      } catch (err: any) {
+        console.error('[AssignArticleDialog] fetchModules error:', err);
+        toast({ title: 'Could not load modules', description: err.message, variant: 'destructive' });
+        setModules([]);
+      } finally {
+        setLoadingModules(false);
+      }
+    }
+    fetchModules();
+  }, [open]);
 
   async function handleAssign() {
     if (!moduleId || !article) return;
@@ -52,6 +89,7 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
       setStudentEmail('');
       setDueDate('');
       setDone(false);
+      setModules([]);
     }
     onOpenChange(isOpen);
   }
@@ -81,14 +119,24 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold">Module *</label>
-                <Select value={moduleId} onValueChange={setModuleId}>
-                  <SelectTrigger><SelectValue placeholder="Select a module…" /></SelectTrigger>
-                  <SelectContent>
-                    {modules.map(m => (
-                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {loadingModules ? (
+                  <p className="text-xs text-muted-foreground py-2">Loading modules…</p>
+                ) : modules.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2 border border-border rounded-md px-3">
+                    No modules found. Create a module first.
+                  </p>
+                ) : (
+                  <Select value={moduleId} onValueChange={setModuleId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a module…" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[9999]">
+                      {modules.map(m => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -112,7 +160,7 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
 
             <DialogFooter>
               <Button variant="outline" onClick={() => handleClose(false)}>Cancel</Button>
-              <Button disabled={!moduleId || saving} onClick={handleAssign}>
+              <Button disabled={!moduleId || saving || modules.length === 0} onClick={handleAssign}>
                 {saving ? 'Assigning…' : 'Assign'}
               </Button>
             </DialogFooter>
