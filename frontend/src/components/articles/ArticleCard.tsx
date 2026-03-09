@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { FolderPlus, ExternalLink, CheckCircle } from 'lucide-react';
+import { FolderPlus, ExternalLink, CheckCircle, BarChart2 } from 'lucide-react';
 import { getFocusArea } from '@/lib/focus-areas';
 import type { Article } from '@/lib/supabase';
 import type { Module } from '@/lib/supabase';
@@ -30,14 +30,27 @@ interface ArticleCardProps {
   modules: Module[];
   onAssign: (articleId: string, moduleId: string) => void;
   onApprove?: (id: string) => void;
+  onViewAnalysis?: (article: Article) => void;
 }
 
-export function ArticleCard({ article, modules, onAssign, onApprove }: ArticleCardProps) {
+export function ArticleCard({ article, modules, onAssign, onApprove, onViewAnalysis }: ArticleCardProps) {
   const focusAreas = article.analysis?.focus_areas ?? [];
   const score = article.analysis?.overall_credibility_score;
 
   return (
-    <Card className="flex flex-col hover:shadow-md transition-shadow border-border/60">
+    <Card
+      className="flex flex-col hover:shadow-md transition-shadow border-border/60 cursor-pointer group relative"
+      onClick={() => onViewAnalysis?.(article)}
+    >
+      {/* Hover hint */}
+      {onViewAnalysis && (
+        <div className="absolute inset-0 rounded-lg flex items-center justify-center bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground bg-background border border-border rounded-full px-3 py-1.5 shadow-sm">
+            <BarChart2 className="h-3.5 w-3.5" /> View Analysis
+          </div>
+        </div>
+      )}
+
       {/* Thumbnail placeholder */}
       {article.thumbnail_url ? (
         <div className="h-36 overflow-hidden rounded-t-lg">
@@ -80,7 +93,7 @@ export function ArticleCard({ article, modules, onAssign, onApprove }: ArticleCa
         )}
       </CardContent>
 
-      <div className="flex flex-col gap-2 px-6 pb-4">
+      <div className="flex flex-col gap-2 px-6 pb-4" onClick={e => e.stopPropagation()}>
         {article.status === 'analysed' && onApprove && (
           <Button
             size="sm"

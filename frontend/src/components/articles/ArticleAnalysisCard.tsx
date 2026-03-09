@@ -170,6 +170,18 @@ export function ArticleAnalysisCard({ analysis }: { analysis: AnalysisData }) {
   return (
     <div className="space-y-5 text-sm">
 
+      {/* Credibility & Bias — top */}
+      <div className="space-y-3">
+        <CredibilityBar score={score} />
+        {analysis.credibility_reasoning && (
+          <p className="text-[10px] text-muted-foreground leading-relaxed italic">{analysis.credibility_reasoning}</p>
+        )}
+        <BiasBar direction={bias} />
+        {analysis.bias_reasoning && (
+          <p className="text-[10px] text-muted-foreground leading-relaxed italic">{analysis.bias_reasoning}</p>
+        )}
+      </div>
+
       {/* Editorial Summary */}
       {analysis.report_summary && (
         <div className="bg-amber-50 border border-amber-200 rounded-md px-3.5 py-3">
@@ -182,18 +194,6 @@ export function ArticleAnalysisCard({ analysis }: { analysis: AnalysisData }) {
       {analysis.summary && (
         <p className="text-muted-foreground text-xs leading-relaxed">{analysis.summary}</p>
       )}
-
-      {/* Credibility & Bias */}
-      <div className="space-y-3">
-        <CredibilityBar score={score} />
-        {analysis.credibility_reasoning && (
-          <p className="text-[10px] text-muted-foreground leading-relaxed italic">{analysis.credibility_reasoning}</p>
-        )}
-        <BiasBar direction={bias} />
-        {analysis.bias_reasoning && (
-          <p className="text-[10px] text-muted-foreground leading-relaxed italic">{analysis.bias_reasoning}</p>
-        )}
-      </div>
 
       {/* Critical Analysis — Goal / Technique / Conclusion */}
       {(analysis.goal || analysis.technique || analysis.conclusion) && (

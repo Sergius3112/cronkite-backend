@@ -3,13 +3,16 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Plus, Search, FileText } from 'lucide-react';
 import { useArticles } from '@/hooks/useArticles';
 import { useModules } from '@/hooks/useModules';
 import { ArticleCard } from '@/components/articles/ArticleCard';
 import { AddArticleDialog } from '@/components/articles/AddArticleDialog';
+import { ArticleAnalysisCard } from '@/components/articles/ArticleAnalysisCard';
 import { FOCUS_AREAS } from '@/lib/focus-areas';
 import { useToast } from '@/hooks/use-toast';
+import type { Article } from '@/lib/supabase';
 
 const CONTENT_TYPES = [
   { value: 'news_article', label: 'News Article' },
@@ -36,6 +39,7 @@ const Articles = () => {
   const [focusFilter, setFocusFilter] = useState('all');
   const [tab, setTab] = useState('analysed');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [analysisArticle, setAnalysisArticle] = useState<Article | null>(null);
 
   const filtered = useMemo(() => {
     const statuses = TAB_STATUS_MAP[tab] ?? ['analysed'];
@@ -144,12 +148,30 @@ const Articles = () => {
               modules={modules}
               onAssign={handleAssign}
               onApprove={handleApprove}
+              onViewAnalysis={setAnalysisArticle}
             />
           ))}
         </div>
       )}
 
       <AddArticleDialog open={dialogOpen} onOpenChange={setDialogOpen} onComplete={() => { refetch(); setTab('analysed'); }} />
+
+      {/* Analysis review modal */}
+      <Dialog open={!!analysisArticle} onOpenChange={open => { if (!open) setAnalysisArticle(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold leading-snug font-['Playfair_Display',Georgia,serif] line-clamp-2">
+              {analysisArticle?.title}
+            </DialogTitle>
+            {analysisArticle?.source && (
+              <p className="text-xs text-muted-foreground">{analysisArticle.source}</p>
+            )}
+          </DialogHeader>
+          {analysisArticle?.analysis && (
+            <ArticleAnalysisCard analysis={analysisArticle.analysis} />
+          )}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 };
