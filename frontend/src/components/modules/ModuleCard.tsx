@@ -9,9 +9,10 @@ interface ModuleCardProps {
   module: Module;
   onEdit: (module: Module) => void;
   onArchive: (id: string) => void;
+  onViewDetail?: (module: Module) => void;
 }
 
-export function ModuleCard({ module, onEdit, onArchive }: ModuleCardProps) {
+export function ModuleCard({ module, onEdit, onArchive, onViewDetail }: ModuleCardProps) {
   const focus = getFocusArea(module.focus_area);
   const Icon = focus.icon;
 
@@ -44,7 +45,10 @@ export function ModuleCard({ module, onEdit, onArchive }: ModuleCardProps) {
         </div>
       </CardContent>
 
-      <CardFooter className="gap-2 pt-0">
+      <CardFooter className="gap-2 pt-0 flex-wrap">
+        <Button variant="default" size="sm" className="flex-1" onClick={() => onViewDetail?.(module)}>
+          <FileText className="mr-1.5 h-3.5 w-3.5" /> View Articles
+        </Button>
         <Button variant="outline" size="sm" className="flex-1" onClick={() => onEdit(module)}>
           <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
         </Button>

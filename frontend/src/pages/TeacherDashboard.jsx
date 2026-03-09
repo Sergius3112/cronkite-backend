@@ -19,7 +19,7 @@ export default function TeacherDashboard() {
   const [session, setSession] = useState(null)
   const [modules, setModules] = useState([])
   const [recentAssignments, setRecentAssignments] = useState([])
-  const [stats, setStats] = useState({ modules:0, reviews:0, assignments:0 })
+  const [stats, setStats] = useState({ modules:0, reviews:0, assignments:0, articles:0, students:0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
@@ -43,10 +43,18 @@ export default function TeacherDashboard() {
     setLoading(true)
     setError(null)
     try {
-      await Promise.all([loadModules(sess), loadRecentAssignments(sess)])
+      await Promise.all([loadModules(sess), loadRecentAssignments(sess), loadArticleCount(sess)])
     } finally {
       setLoading(false)
     }
+  }
+
+  async function loadArticleCount(sess) {
+    const { count } = await sb
+      .from('articles')
+      .select('*', { count: 'exact', head: true })
+      .eq('teacher_id', sess.user.id)
+    setStats(s => ({ ...s, articles: count || 0 }))
   }
 
   async function loadModules(sess) {
@@ -70,7 +78,8 @@ export default function TeacherDashboard() {
     const all = data || []
     setRecentAssignments(all)
     const pending = all.filter(a => a.status === 'completed').length
-    setStats(s => ({ ...s, assignments: all.length, reviews: pending }))
+    const uniqueStudents = new Set(all.map(a => a.student_email).filter(Boolean)).size
+    setStats(s => ({ ...s, assignments: all.length, reviews: pending, students: uniqueStudents }))
   }
 
   async function loadModuleAssignments(moduleId) {
@@ -168,10 +177,12 @@ export default function TeacherDashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
           <StatCard label="Active Modules"    value={stats.modules}     />
-          <StatCard label="Pending Reviews"   value={stats.reviews}     red />
+          <StatCard label="Articles"          value={stats.articles}    />
           <StatCard label="Total Assignments" value={stats.assignments} />
+          <StatCard label="Students"          value={stats.students}    />
+          <StatCard label="Pending Reviews"   value={stats.reviews}     red />
         </div>
 
         {/* Create Module */}

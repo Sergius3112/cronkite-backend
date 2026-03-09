@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ClipboardList, CheckCircle, Clock, Eye, AlertTriangle } from 'lucide-react';
+import { ClipboardList, CheckCircle, Clock, Eye, AlertTriangle, Users } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useModules } from '@/hooks/useModules';
 import { useReportsData } from '@/hooks/useReportsData';
@@ -45,6 +45,7 @@ const Reports = () => {
   const completionRate = totalAssignments > 0 ? Math.round((completedCount / totalAssignments) * 100) : 0;
   const pendingReview = filtered.filter(a => a.status === 'completed').length;
   const reviewed = filtered.filter(a => a.status === 'reviewed').length;
+  const uniqueStudents = useMemo(() => new Set(filtered.map(a => a.student_email).filter(Boolean)).size, [filtered]);
 
   // Bar chart: assignments per module
   const barData = useMemo(() => {
@@ -64,6 +65,25 @@ const Reports = () => {
       name: status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' '),
       value,
     }));
+  }, [filtered]);
+
+  // Most assigned articles
+  const topArticles = useMemo(() => {
+    const counts: Record<string, { title: string; count: number }> = {};
+    filtered.forEach(a => {
+      const key = a.article_id || a.article_url;
+      if (!key) return;
+      if (!counts[key]) counts[key] = { title: a.article_title || a.article_url, count: 0 };
+      counts[key].count++;
+    });
+    return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5);
+  }, [filtered]);
+
+  // Average bias direction
+  const avgBias = useMemo(() => {
+    const biases = filtered.map(a => a.bias_direction).filter((b): b is number => b != null);
+    if (biases.length === 0) return null;
+    return Math.round(biases.reduce((s, v) => s + v, 0) / biases.length);
   }, [filtered]);
 
   // Needs attention: students with 0 completions or overdue
@@ -130,9 +150,10 @@ const Reports = () => {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
           <StatCard icon={ClipboardList} label="Total Assignments" value={totalAssignments} />
           <StatCard icon={CheckCircle} label="Completion Rate" value={`${completionRate}%`} sub={`${completedCount} of ${totalAssignments}`} />
+          <StatCard icon={Users} label="Students" value={uniqueStudents} />
           <StatCard icon={Clock} label="Pending Review" value={pendingReview} />
           <StatCard icon={Eye} label="Reviewed" value={reviewed} />
         </div>
@@ -198,6 +219,61 @@ const Reports = () => {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Most assigned articles + bias */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Most Assigned Articles</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {topArticles.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No data yet</p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {topArticles.map((a, i) => (
+                    <div key={i} className="flex items-center justify-between py-2.5 gap-3">
+                      <p className="text-sm truncate flex-1">{a.title || '(untitled)'}</p>
+                      <span className="shrink-0 text-xs font-semibold bg-primary/10 text-primary rounded-full px-2 py-0.5">
+                        {a.count} {a.count === 1 ? 'class' : 'classes'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Average Bias Exposure</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {avgBias == null ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No bias data yet</p>
+              ) : (
+                <div className="py-4 space-y-3">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Left</span>
+                    <span className="font-semibold text-foreground">
+                      {avgBias < -10 ? 'Left-leaning' : avgBias > 10 ? 'Right-leaning' : 'Centre'}
+                    </span>
+                    <span>Right</span>
+                  </div>
+                  <div className="relative h-3 bg-gradient-to-r from-blue-400 via-muted to-red-400 rounded-full">
+                    <div
+                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-foreground rounded-full border-2 border-background shadow"
+                      style={{ left: `calc(${((avgBias + 100) / 200) * 100}% - 8px)` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Average bias score: <span className="font-semibold text-foreground">{avgBias > 0 ? '+' : ''}{avgBias}</span> across {filtered.filter(a => a.bias_direction != null).length} articles
+                  </p>
+                </div>
               )}
             </CardContent>
           </Card>

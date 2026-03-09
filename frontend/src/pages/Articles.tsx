@@ -10,6 +10,7 @@ import { useModules } from '@/hooks/useModules';
 import { ArticleCard } from '@/components/articles/ArticleCard';
 import { AddArticleDialog } from '@/components/articles/AddArticleDialog';
 import { ArticleAnalysisCard } from '@/components/articles/ArticleAnalysisCard';
+import { AssignArticleDialog } from '@/components/articles/AssignArticleDialog';
 import { FOCUS_AREAS } from '@/lib/focus-areas';
 import { useToast } from '@/hooks/use-toast';
 import type { Article } from '@/lib/supabase';
@@ -40,6 +41,7 @@ const Articles = () => {
   const [tab, setTab] = useState('analysed');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [analysisArticle, setAnalysisArticle] = useState<Article | null>(null);
+  const [assignArticle, setAssignArticle] = useState<Article | null>(null);
 
   const filtered = useMemo(() => {
     const statuses = TAB_STATUS_MAP[tab] ?? ['analysed'];
@@ -63,11 +65,6 @@ const Articles = () => {
   const handleApprove = async (id: string) => {
     await approveArticle(id);
     toast({ title: 'Article approved', description: 'Moved to Approved — ready to assign to modules.' });
-  };
-
-  const handleAssign = (articleId: string, moduleId: string) => {
-    const mod = modules.find(m => m.id === moduleId);
-    toast({ title: 'Article assigned', description: `Added to "${mod?.name ?? 'module'}"` });
   };
 
   return (
@@ -146,15 +143,21 @@ const Articles = () => {
               key={a.id}
               article={a}
               modules={modules}
-              onAssign={handleAssign}
               onApprove={handleApprove}
               onViewAnalysis={setAnalysisArticle}
+              onRequestAssign={setAssignArticle}
             />
           ))}
         </div>
       )}
 
       <AddArticleDialog open={dialogOpen} onOpenChange={setDialogOpen} onComplete={() => { refetch(); setTab('analysed'); }} />
+
+      <AssignArticleDialog
+        article={assignArticle}
+        open={!!assignArticle}
+        onOpenChange={open => { if (!open) setAssignArticle(null); }}
+      />
 
       {/* Analysis review modal */}
       <Dialog open={!!analysisArticle} onOpenChange={open => { if (!open) setAnalysisArticle(null); }}>

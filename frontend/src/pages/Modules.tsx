@@ -1,24 +1,41 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, BookOpen } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Search, BookOpen, ExternalLink, Trash2 } from 'lucide-react';
 import { useModules } from '@/hooks/useModules';
 import { ModuleCard } from '@/components/modules/ModuleCard';
 import { ModuleFormDialog } from '@/components/modules/ModuleFormDialog';
 import { FOCUS_AREAS, KEY_STAGES } from '@/lib/focus-areas';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabase';
 import type { Module } from '@/lib/supabase';
+
+type ModuleAssignment = {
+  id: string;
+  status: string;
+  article_id: string | null;
+  article_title: string | null;
+  article_url: string | null;
+  articles: { id: string; title: string; source: string; url: string; analysis: Record<string, unknown> | null } | null;
+};
 
 const Modules = () => {
   const { modules, loading, error: modulesError, createModule, updateModule, archiveModule } = useModules();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
   const [focusFilter, setFocusFilter] = useState('all');
   const [ksFilter, setKsFilter] = useState('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingModule, setEditingModule] = useState<Module | null>(null);
+  const [detailModule, setDetailModule] = useState<Module | null>(null);
+  const [moduleAssignments, setModuleAssignments] = useState<ModuleAssignment[]>([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
 
   const filtered = useMemo(() => {
     return modules.filter(m => {
@@ -54,6 +71,32 @@ const Modules = () => {
 
   const openCreate = () => { setEditingModule(null); setDialogOpen(true); };
   const openEdit = (m: Module) => { setEditingModule(m); setDialogOpen(true); };
+
+  async function openDetail(m: Module) {
+    setDetailModule(m);
+    setLoadingAssignments(true);
+    const { data } = await supabase
+      .from('assignments')
+      .select('id, status, article_id, article_title, article_url, articles(id, title, source, url, analysis)')
+      .eq('module_id', m.id)
+      .order('created_at', { ascending: false });
+    setModuleAssignments((data as ModuleAssignment[]) || []);
+    setLoadingAssignments(false);
+  }
+
+  async function removeAssignment(assignmentId: string) {
+    const { error } = await supabase.from('assignments').delete().eq('id', assignmentId);
+    if (error) {
+      toast({ title: 'Error removing article', description: error.message, variant: 'destructive' });
+    } else {
+      setModuleAssignments(prev => prev.filter(a => a.id !== assignmentId));
+    }
+  }
+
+  function closeDetail() {
+    setDetailModule(null);
+    setModuleAssignments([]);
+  }
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -120,16 +163,97 @@ const Modules = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {filtered.map(m => (
-              <ModuleCard key={m.id} module={m} onEdit={openEdit} onArchive={handleArchive} />
+              <ModuleCard key={m.id} module={m} onEdit={openEdit} onArchive={handleArchive} onViewDetail={openDetail} />
             ))}
           </div>
         )}
+
       <ModuleFormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         module={editingModule}
         onSubmit={handleSubmit}
       />
+
+      {/* Module detail dialog */}
+      <Dialog open={!!detailModule} onOpenChange={open => { if (!open) closeDetail(); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="font-['Playfair_Display',Georgia,serif]">{detailModule?.name}</DialogTitle>
+            {detailModule?.description && (
+              <p className="text-xs text-muted-foreground mt-0.5">{detailModule.description}</p>
+            )}
+          </DialogHeader>
+
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-muted-foreground">
+              {moduleAssignments.length} article{moduleAssignments.length !== 1 ? 's' : ''} assigned
+            </p>
+            <Button size="sm" onClick={() => { closeDetail(); navigate('/articles'); }}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> Assign Article
+            </Button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {loadingAssignments ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />
+                ))}
+              </div>
+            ) : moduleAssignments.length === 0 ? (
+              <div className="text-center py-10">
+                <p className="text-sm text-muted-foreground">No articles assigned yet.</p>
+                <Button variant="link" className="mt-1 text-xs" onClick={() => { closeDetail(); navigate('/articles'); }}>
+                  Go to Article Library →
+                </Button>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {moduleAssignments.map(a => {
+                  const art = a.articles;
+                  const title = art?.title || a.article_title || a.article_url || a.id;
+                  const source = art?.source || '';
+                  const score = (art?.analysis as any)?.overall_credibility_score ?? (art?.analysis as any)?.credibility_score;
+                  const url = a.article_url || art?.url;
+
+                  return (
+                    <div key={a.id} className="flex items-center gap-3 py-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{title}</p>
+                        <p className="text-xs text-muted-foreground">{source}</p>
+                      </div>
+                      {score != null && (
+                        <Badge variant="outline" className={`shrink-0 text-xs font-semibold ${
+                          score >= 75 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : score >= 50 ? 'border-amber-200 bg-amber-50 text-amber-700'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                        }`}>
+                          {score}%
+                        </Badge>
+                      )}
+                      {url && (
+                        <Button variant="ghost" size="sm" className="shrink-0 h-7 w-7 p-0" asChild>
+                          <a href={url} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost" size="sm"
+                        className="shrink-0 h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => removeAssignment(a.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 };

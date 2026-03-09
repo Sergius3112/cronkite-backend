@@ -5,10 +5,13 @@ export type Assignment = {
   id: string;
   module_id: string;
   article_id: string;
+  article_title: string;
+  article_url: string;
   student_email: string;
   status: string;
   due_date: string | null;
   instructions: string;
+  bias_direction: number | null;
 };
 
 export type StudentResult = {
@@ -36,7 +39,7 @@ export function useReportsData(moduleIds: string[]) {
     const [assignRes, resultRes] = await Promise.all([
       supabase
         .from('assignments')
-        .select('id, module_id, article_url, created_at, due_date, instructions')
+        .select('id, module_id, article_id, article_title, article_url, student_email, status, due_date, instructions, articles(analysis)')
         .in('module_id', moduleIds),
       supabase
         .from('student_results')
@@ -47,16 +50,19 @@ export function useReportsData(moduleIds: string[]) {
       setAssignments(assignRes.data.map((a: any) => ({
         id: a.id,
         module_id: a.module_id,
-        article_id: a.id,
-        student_email: '',
-        status: 'pending',
+        article_id: a.article_id ?? '',
+        article_title: a.article_title || a.article_url || '',
+        article_url: a.article_url || '',
+        student_email: a.student_email ?? '',
+        status: a.status ?? 'assigned',
         due_date: a.due_date ?? null,
         instructions: a.instructions ?? '',
+        bias_direction: a.articles?.analysis?.bias_direction ?? null,
       })));
     }
     if (resultRes.data) setResults(resultRes.data as StudentResult[]);
     setLoading(false);
-  }, [moduleIds]);
+  }, [moduleIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

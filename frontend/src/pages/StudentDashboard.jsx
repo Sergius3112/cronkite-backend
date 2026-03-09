@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
-import { CheckCircle, AlertCircle } from 'lucide-react'
+import { CheckCircle, AlertCircle, X } from 'lucide-react'
 import { format } from 'date-fns'
+import { ArticleAnalysisCard } from '../components/articles/ArticleAnalysisCard'
 
 const FOCUS_LABELS = {
   evaluating_content:    'Evaluating Content',
@@ -24,6 +25,7 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [completing, setCompleting] = useState({})
+  const [analysisOpen, setAnalysisOpen] = useState(null) // assignment being viewed
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
@@ -49,7 +51,7 @@ export default function StudentDashboard() {
   async function loadAssignments(sess) {
     const { data, error } = await sb
       .from('assignments')
-      .select('*, modules(id, title, focus_point, description)')
+      .select('*, modules(id, title, focus_point, description), articles(id, title, url, source, analysis)')
       .eq('student_email', sess.user.email)
       .order('created_at', { ascending: false })
 
@@ -148,6 +150,7 @@ export default function StudentDashboard() {
                     mod={moduleMap[a.module_id]}
                     completing={completing[a.id]}
                     onComplete={() => markComplete(a)}
+                    onViewAnalysis={() => setAnalysisOpen(a)}
                   />
                 ))}
               </div>
@@ -162,21 +165,66 @@ export default function StudentDashboard() {
                     key={a.id} assignment={a}
                     mod={moduleMap[a.module_id]}
                     done
+                    onViewAnalysis={() => setAnalysisOpen(a)}
                   />
                 ))}
               </div>
+        )}
+
+        {/* Analysis modal */}
+        {analysisOpen && (
+          <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8">
+              <div className="flex items-start justify-between p-5 border-b border-gray-100">
+                <div>
+                  <h3 className="font-serif text-base text-ink font-semibold leading-snug">
+                    {analysisOpen.articles?.title || analysisOpen.article_title || 'Article Analysis'}
+                  </h3>
+                  {(analysisOpen.articles?.source) && (
+                    <p className="text-xs text-ink-light mt-0.5">{analysisOpen.articles.source}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setAnalysisOpen(null)}
+                  className="ml-4 p-1.5 rounded-lg text-ink-light hover:text-ink hover:bg-gray-100 transition-colors flex-shrink-0"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-5">
+                {analysisOpen.articles?.analysis ? (
+                  <ArticleAnalysisCard analysis={analysisOpen.articles.analysis} />
+                ) : (
+                  <p className="text-sm text-ink-light text-center py-8">No analysis available for this article.</p>
+                )}
+              </div>
+            </div>
+          </div>
         )}
     </div>
   )
 }
 
-function AssignmentCard({ assignment: a, mod, done, completing, onComplete }) {
+function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onViewAnalysis }) {
+  const article = a.articles ?? null
+  const title = article?.title || a.article_title || a.article_url || a.id
+  const articleUrl = a.article_url || article?.url || ''
+  const score = article?.analysis?.overall_credibility_score ?? article?.analysis?.credibility_score
+
   return (
     <div className={`bg-paper-dark border rounded-xl p-4 flex items-start gap-3 transition-opacity ${done ? 'opacity-70 border-border/50' : 'border-border'}`}>
       <div className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 border-2 ${done ? 'bg-green border-green' : 'bg-border border-border'}`} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-ink mb-0.5 truncate">{a.article_title || a.article_url || a.id}</p>
-        <p className="text-xs text-ink-light truncate mb-2">{a.article_url}</p>
+        <div className="flex items-start justify-between gap-2 mb-0.5">
+          <p className="text-sm font-semibold text-ink truncate">{title}</p>
+          {score != null && (
+            <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${score >= 75 ? 'bg-green-100 text-green-800' : score >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}`}>
+              {score}%
+            </span>
+          )}
+        </div>
+        {article?.source && <p className="text-xs text-ink-light mb-1">{article.source}</p>}
+        {articleUrl && <p className="text-xs text-ink-light truncate mb-2">{articleUrl}</p>}
         {mod && (
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <span className="text-[10px] font-semibold text-ink-mid">{mod.title}</span>
@@ -185,22 +233,30 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete }) {
         )}
         {a.due_date && <p className="text-[10px] text-ink-light mb-2">Due {format(new Date(a.due_date), 'd MMM yyyy')}</p>}
         <div className="flex items-center gap-2 flex-wrap">
+          {article?.analysis && (
+            <button
+              onClick={onViewAnalysis}
+              className="inline-flex items-center gap-1.5 border border-border hover:border-ink text-ink-mid hover:text-ink text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+            >
+              View Analysis
+            </button>
+          )}
+          {!done && articleUrl && (
+            <a
+              href={`${CRONKITE_APP}?url=${encodeURIComponent(articleUrl)}`}
+              target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 bg-red hover:bg-red-dark text-paper text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:-translate-y-px"
+            >
+              Open Article
+            </a>
+          )}
           {!done && (
-            <>
-              <a
-                href={`${CRONKITE_APP}?url=${encodeURIComponent(a.article_url || '')}`}
-                target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 bg-red hover:bg-red-dark text-paper text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:-translate-y-px"
-              >
-                Analyse with Cronkite
-              </a>
-              <button
-                onClick={onComplete} disabled={completing}
-                className="inline-flex items-center gap-1.5 border border-border hover:border-ink text-ink-mid hover:text-ink text-xs font-semibold px-3 py-1.5 rounded-lg transition-all disabled:opacity-40"
-              >
-                {completing ? <><Spinner />Saving…</> : 'Mark Complete'}
-              </button>
-            </>
+            <button
+              onClick={onComplete} disabled={completing}
+              className="inline-flex items-center gap-1.5 border border-border hover:border-ink text-ink-mid hover:text-ink text-xs font-semibold px-3 py-1.5 rounded-lg transition-all disabled:opacity-40"
+            >
+              {completing ? <><Spinner />Saving…</> : "I've read this"}
+            </button>
           )}
           {done && (
             <span className="inline-flex items-center gap-1.5 text-green text-xs font-semibold">

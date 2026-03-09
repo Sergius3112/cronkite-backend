@@ -1,7 +1,6 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { FolderPlus, ExternalLink, CheckCircle, BarChart2 } from 'lucide-react';
 import { getFocusArea } from '@/lib/focus-areas';
 import type { Article } from '@/lib/supabase';
@@ -27,13 +26,14 @@ function CredibilityScore({ score }: { score?: number }) {
 
 interface ArticleCardProps {
   article: Article;
-  modules: Module[];
-  onAssign: (articleId: string, moduleId: string) => void;
+  modules?: Module[];
+  onAssign?: (articleId: string, moduleId: string) => void;
   onApprove?: (id: string) => void;
   onViewAnalysis?: (article: Article) => void;
+  onRequestAssign?: (article: Article) => void;
 }
 
-export function ArticleCard({ article, modules, onAssign, onApprove, onViewAnalysis }: ArticleCardProps) {
+export function ArticleCard({ article, modules, onAssign, onApprove, onViewAnalysis, onRequestAssign }: ArticleCardProps) {
   const focusAreas = article.analysis?.focus_areas ?? [];
   const score = article.analysis?.overall_credibility_score;
 
@@ -109,24 +109,9 @@ export function ArticleCard({ article, modules, onAssign, onApprove, onViewAnaly
               <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> View
             </a>
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="flex-1">
-                <FolderPlus className="mr-1.5 h-3.5 w-3.5" /> Assign
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {modules.length === 0 ? (
-                <DropdownMenuItem disabled>No modules yet</DropdownMenuItem>
-              ) : (
-                modules.map(m => (
-                  <DropdownMenuItem key={m.id} onClick={() => onAssign(article.id, m.id)}>
-                    {m.name}
-                  </DropdownMenuItem>
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button variant="outline" size="sm" className="flex-1" onClick={() => onRequestAssign?.(article)}>
+            <FolderPlus className="mr-1.5 h-3.5 w-3.5" /> Assign
+          </Button>
         </div>
       </div>
     </Card>
