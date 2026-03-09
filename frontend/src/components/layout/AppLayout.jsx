@@ -20,33 +20,32 @@ const STUDENT_NAV = [
   { label: 'Modules',       href: '/student/modules', icon: BookOpen },
 ]
 
-// Dotless i (U+0131) removes the dot; green asterisk is positioned where the dot was
 function CronkiteWordmark() {
   return (
-    <span
-      aria-label="Cronkite"
-      style={{ fontFamily: "'Playfair Display', Georgia, serif", fontWeight: 700, color: '#1a1a1a' }}
-    >
-      {'Cronk'}
-      <span style={{ position: 'relative', display: 'inline-block' }}>
-        {'\u0131'}
-        <span
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            top: '-0.35em',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            color: '#22c55e',
-            fontSize: '0.7em',
-            lineHeight: 1,
-            pointerEvents: 'none',
-          }}
-        >
-          *
+    <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="2" y="4" width="28" height="24" rx="2" stroke="#22c55e" strokeWidth="2.5" fill="none"/>
+        <rect x="6" y="9" width="12" height="2" rx="1" fill="#22c55e"/>
+        <rect x="6" y="13" width="20" height="2" rx="1" fill="#22c55e"/>
+        <rect x="6" y="17" width="20" height="2" rx="1" fill="#22c55e"/>
+        <rect x="6" y="21" width="14" height="2" rx="1" fill="#22c55e"/>
+      </svg>
+      <span
+        aria-label="Cronkite"
+        style={{ fontFamily: 'Playfair Display, serif', fontSize: '22px', fontWeight: 700, color: '#1a1a1a', position: 'relative', lineHeight: 1 }}
+      >
+        {'Cronk'}
+        <span style={{ position: 'relative', display: 'inline-block' }}>
+          {'\u0131'}
+          <span
+            aria-hidden="true"
+            style={{ position: 'absolute', top: '-8px', left: '50%', transform: 'translateX(-50%)', color: '#22c55e', fontSize: '14px', lineHeight: 1 }}
+          >
+            *
+          </span>
         </span>
+        {'te'}
       </span>
-      {'te'}
     </span>
   )
 }
@@ -80,11 +79,10 @@ export function AppLayout({ children }) {
         <div className="flex items-center gap-2.5 px-5 h-14 border-b border-border shrink-0">
           <Link
             to={isStudentRoute ? '/student' : '/modules'}
-            className="flex items-center gap-2 min-w-0"
+            className="flex items-center min-w-0"
             onClick={() => setMobileOpen(false)}
           >
-            <Newspaper className="h-5 w-5 shrink-0" style={{ color: '#22c55e' }} />
-            <span className="text-base truncate"><CronkiteWordmark /></span>
+            <CronkiteWordmark />
           </Link>
         </div>
 
