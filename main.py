@@ -90,6 +90,9 @@ class StudentResultCreate(BaseModel):
     assignment_id: str
     analysis_json: dict
 
+class ApiAnalyseRequest(BaseModel):
+    url: str
+
 
 # ── URL type detection ────────────────────────────────────────────────────────
 
@@ -709,6 +712,95 @@ async def get_my_results(user: dict = Depends(get_current_user)):
         .execute()
     )
     return result.data
+
+
+# ── AI article analysis (Anthropic + web search) ──────────────────────────────
+
+@app.post("/api/analyse")
+async def api_analyse(req: ApiAnalyseRequest, user: dict = Depends(get_current_user)):
+    """Analyse a URL using Claude AI with web search. Saves result to the articles table."""
+    import anthropic as _anthropic
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
+
+    prompt = (
+        f"You are a media literacy analyser for UK schools. Analyse the content at this URL: {req.url}\n\n"
+        "Use web search to fetch and read the content. For social media (YouTube, Instagram, "
+        "X/Twitter, TikTok), search for the content, creator credibility, and fact-checks. "
+        "Cross-reference key claims against reliable sources.\n\n"
+        "Return ONLY valid JSON with this exact structure:\n"
+        "{\n"
+        '  "title": "article/video/post title",\n'
+        '  "source": "publication/channel/account name",\n'
+        '  "summary": "2-3 sentence summary",\n'
+        '  "content_type": "news_article|video|social_media_post|political_policy",\n'
+        '  "credibility_score": 0-100,\n'
+        '  "bias_direction": -100 to +100 (negative=left, positive=right),\n'
+        '  "bias_intensity": 0-100,\n'
+        '  "persuasion_techniques": ["technique1", "technique2"],\n'
+        '  "key_claims": [\n'
+        '    {"claim": "...", "verified": true/false, "source": "..."}\n'
+        '  ],\n'
+        '  "word_analysis": [\n'
+        '    {"word": "...", "flag_type": "loaded|misleading|emotional", "explanation": "..."}\n'
+        '  ],\n'
+        '  "focus_areas": ["evaluating_content", "persuasion_techniques", "online_behaviour",\n'
+        '                  "identifying_risks", "managing_information"],\n'
+        '  "age_appropriateness": "ks2|ks3|ks4|ks5"\n'
+        "}"
+    )
+
+    try:
+        client = _anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=4096,
+            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}],
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        # Extract text blocks only (skip tool_use / tool_result blocks)
+        text = ""
+        for block in response.content:
+            if block.type == "text":
+                text += block.text
+
+        # Parse JSON from response
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start == -1 or end <= start:
+            raise ValueError(f"No valid JSON in response. Got: {text[:500]}")
+
+        data = json.loads(text[start:end])
+
+        # Alias for frontend compatibility
+        data["overall_credibility_score"] = data.get("credibility_score", 50)
+
+        # Save to articles table in Supabase
+        supa = get_supabase()
+        insert_res = supa.table("articles").insert({
+            "teacher_id": user["sub"],
+            "url": req.url,
+            "title": data.get("title", ""),
+            "source": data.get("source", ""),
+            "summary": data.get("summary", ""),
+            "content_type": data.get("content_type", "news_article"),
+            "analysis": data,
+            "status": "analysed",
+        }).execute()
+
+        if insert_res.data:
+            data["id"] = insert_res.data[0]["id"]
+
+        return data
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse analysis JSON: {e}")
+    except Exception as e:
+        logger.error(f"/api/analyse error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── SPA catch-all — must be the very last route ───────────────────────────────

@@ -327,6 +327,32 @@ create policy "challenger_sessions: teacher read" on public.challenger_sessions
 
 
 -- ============================================================
+-- 8. Articles
+--    Teacher-curated content with AI analysis results.
+--    status: 'analysed' = awaiting teacher review
+--            'approved' = ready to assign to modules
+-- ============================================================
+create table if not exists public.articles (
+  id           uuid        default gen_random_uuid() primary key,
+  teacher_id   uuid        references public.users(id) on delete cascade not null,
+  url          text        not null,
+  title        text        not null default '',
+  source       text        not null default '',
+  summary      text        not null default '',
+  content_type text        not null default 'news_article',
+  analysis     jsonb,
+  status       text        not null default 'analysed'
+                 check (status in ('analysed', 'approved')),
+  created_at   timestamptz not null default now()
+);
+
+alter table public.articles enable row level security;
+
+create policy "articles: teacher full" on public.articles
+  for all using (auth.uid() = teacher_id);
+
+
+-- ============================================================
 -- Indexes
 -- ============================================================
 
@@ -344,3 +370,7 @@ create index if not exists idx_reports_teacher_date    on public.daily_reports  
 create index if not exists idx_reports_module          on public.daily_reports        (module_id);
 create index if not exists idx_challenger_student      on public.challenger_sessions  (student_id);
 create index if not exists idx_challenger_assignment   on public.challenger_sessions  (assignment_id);
+
+-- Articles (v3)
+create index if not exists idx_articles_teacher        on public.articles             (teacher_id);
+create index if not exists idx_articles_status         on public.articles             (teacher_id, status);

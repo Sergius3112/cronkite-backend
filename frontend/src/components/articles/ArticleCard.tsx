@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { FolderPlus, ExternalLink } from 'lucide-react';
+import { FolderPlus, ExternalLink, CheckCircle } from 'lucide-react';
 import { getFocusArea } from '@/lib/focus-areas';
 import type { Article } from '@/lib/supabase';
 import type { Module } from '@/lib/supabase';
@@ -29,9 +29,10 @@ interface ArticleCardProps {
   article: Article;
   modules: Module[];
   onAssign: (articleId: string, moduleId: string) => void;
+  onApprove?: (id: string) => void;
 }
 
-export function ArticleCard({ article, modules, onAssign }: ArticleCardProps) {
+export function ArticleCard({ article, modules, onAssign, onApprove }: ArticleCardProps) {
   const focusAreas = article.analysis?.focus_areas ?? [];
   const score = article.analysis?.overall_credibility_score;
 
@@ -79,30 +80,41 @@ export function ArticleCard({ article, modules, onAssign }: ArticleCardProps) {
         )}
       </CardContent>
 
-      <div className="flex items-center gap-2 px-6 pb-4">
-        <Button variant="outline" size="sm" className="flex-1" asChild>
-          <a href={article.url} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> View
-          </a>
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="flex-1">
-              <FolderPlus className="mr-1.5 h-3.5 w-3.5" /> Assign
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {modules.length === 0 ? (
-              <DropdownMenuItem disabled>No modules yet</DropdownMenuItem>
-            ) : (
-              modules.map(m => (
-                <DropdownMenuItem key={m.id} onClick={() => onAssign(article.id, m.id)}>
-                  {m.name}
-                </DropdownMenuItem>
-              ))
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <div className="flex flex-col gap-2 px-6 pb-4">
+        {article.status === 'analysed' && onApprove && (
+          <Button
+            size="sm"
+            className="w-full"
+            onClick={() => onApprove(article.id)}
+          >
+            <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Approve
+          </Button>
+        )}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="flex-1" asChild>
+            <a href={article.url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> View
+            </a>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="flex-1">
+                <FolderPlus className="mr-1.5 h-3.5 w-3.5" /> Assign
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {modules.length === 0 ? (
+                <DropdownMenuItem disabled>No modules yet</DropdownMenuItem>
+              ) : (
+                modules.map(m => (
+                  <DropdownMenuItem key={m.id} onClick={() => onAssign(article.id, m.id)}>
+                    {m.name}
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </Card>
   );
