@@ -755,39 +755,102 @@ async def api_analyse(req: ApiAnalyseRequest, authorization: str = Header(None),
     if not api_key:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
 
-    prompt = (
-        f"You are a media literacy analyser for UK schools. Analyse the content at this URL: {req.url}\n\n"
-        "Use web search to fetch and read the content. For social media (YouTube, Instagram, "
-        "X/Twitter, TikTok), search for the content, creator credibility, and fact-checks. "
-        "Cross-reference key claims against reliable sources.\n\n"
-        "Return ONLY valid JSON with this exact structure:\n"
-        "{\n"
-        '  "title": "article/video/post title",\n'
-        '  "source": "publication/channel/account name",\n'
-        '  "summary": "2-3 sentence summary",\n'
-        '  "content_type": "news_article|video|social_media_post|political_policy",\n'
-        '  "credibility_score": 0-100,\n'
-        '  "bias_direction": -100 to +100 (negative=left, positive=right),\n'
-        '  "bias_intensity": 0-100,\n'
-        '  "persuasion_techniques": ["technique1", "technique2"],\n'
-        '  "key_claims": [\n'
-        '    {"claim": "...", "verified": true/false, "source": "..."}\n'
-        '  ],\n'
-        '  "word_analysis": [\n'
-        '    {"word": "...", "flag_type": "loaded|misleading|emotional", "explanation": "..."}\n'
-        '  ],\n'
-        '  "focus_areas": ["evaluating_content", "persuasion_techniques", "online_behaviour",\n'
-        '                  "identifying_risks", "managing_information"],\n'
-        '  "age_appropriateness": "ks2|ks3|ks4|ks5"\n'
-        "}"
-    )
+    prompt = f"""You are a world-class media literacy analyst combining the critical intelligence \
+of an English Literature and Language scholar, the forensic rigour of an \
+investigative journalist, and the contextual awareness of a political historian.
+
+Analyse the content at this URL: {req.url}
+
+Use web search to:
+1. Read the full content
+2. Research the author/creator/journalist — their history, known positions, \
+previous controversies, political affiliations or funding sources
+3. Research the publication/channel/party — their editorial stance, ownership, \
+funding, track record of accuracy
+4. Cross-reference at least 5 key claims against reliable sources
+5. For political content: research the party or figure's history and agenda
+
+This analysis will power both a school media literacy platform (Cronkite) and \
+an AI critical thinking companion (Horizons). It must be rigorous, precise and \
+written with the authority of a language and literature scholar.
+
+Return ONLY valid JSON with this exact structure:
+{{
+  "title": "exact title",
+  "source": "publication or channel name",
+  "author": "author/creator name if identifiable",
+  "summary": "3-4 sentence analytical summary — what is being argued, how it is being argued, and what is notable about the framing",
+  "content_type": "news_article|opinion_piece|video|social_media_post|political_policy|advertisement",
+
+  "credibility_score": 0-100,
+  "credibility_reasoning": "2-3 sentences explaining the score with specific evidence",
+  "goal": "The underlying communicative goal of this content — what is it ultimately trying to make the reader think, feel or do?",
+  "technique": "The primary rhetorical or linguistic technique used to achieve that goal — include specific examples of loaded or marked phrases (e.g. 'Afghan knifeman', 'benefit scroungers', 'coastal elites') and explain their effect",
+  "conclusion": "What a critical reader should conclude about this content — its reliability, its agenda, and how it should be read",
+
+  "bias_direction": -100 to +100,
+  "bias_intensity": 0-100,
+  "bias_reasoning": "2-3 sentences explaining bias with specific textual examples",
+
+  "creator_profile": {{
+    "name": "author or creator name",
+    "history": "Known positions, affiliations, controversies or track record relevant to assessing this content",
+    "political_leaning": "left|centre-left|centre|centre-right|right|unknown",
+    "credibility_impact": "How this creator's background affects the credibility of this specific piece"
+  }},
+
+  "source_profile": {{
+    "name": "publication or channel",
+    "ownership": "who owns or funds this outlet",
+    "editorial_stance": "known political or ideological position",
+    "track_record": "accuracy record, notable controversies or corrections",
+    "credibility_impact": "how the source's profile affects trust in this content"
+  }},
+
+  "persuasion_techniques": [
+    {{
+      "technique": "name e.g. Appeal to Fear, Loaded Language, False Dichotomy, Bandwagon, Ad Hominem, Strawman, Cherry Picking",
+      "example": "direct quote or specific example from the content",
+      "explanation": "precise linguistic analysis of why this is persuasive and what psychological or emotional effect it creates"
+    }}
+  ],
+
+  "key_claims": [
+    {{
+      "claim": "specific claim made in the content",
+      "verdict": "verified|unverified|misleading|false",
+      "evidence": "what you found when cross-referencing",
+      "source": "where you verified or refuted it"
+    }}
+  ],
+
+  "word_analysis": [
+    {{
+      "word": "specific word or phrase — prioritise loaded, marked or ideologically charged language",
+      "flag_type": "loaded|misleading|emotional|euphemism|dysphemism|marked",
+      "explanation": "precise linguistic analysis — connotations, register, what the word choice reveals about the author's stance"
+    }}
+  ],
+
+  "narrative_framing": "2-3 sentences on whose perspective dominates, whose voices are absent, what is taken for granted, and what the framing reveals about underlying assumptions",
+
+  "classroom_discussion_questions": [
+    "3-5 critical thinking questions a teacher could use with students"
+  ],
+
+  "focus_areas": ["evaluating_content", "persuasion_techniques", "online_behaviour", "identifying_risks", "managing_information"],
+  "age_appropriateness": "ks2|ks3|ks4|ks5",
+  "reading_level": "accessible|moderate|challenging",
+
+  "report_summary": "A 5-7 sentence executive summary written with the authority of a language and literature scholar — covering the content's goal, its primary techniques, the credibility of its source and creator, and what a critical reader should take away. Suitable for a teacher to read before assigning this to students, or for an individual to read as part of their media diet audit."
+}}"""
 
     try:
         client = _anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model="claude-opus-4-6",
-            max_tokens=4096,
-            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+            max_tokens=8192,
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 10}],
             messages=[{"role": "user", "content": prompt}],
         )
 
