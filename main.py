@@ -787,7 +787,7 @@ async def api_analyse(req: ApiAnalyseRequest, authorization: str = Header(None),
         response = client.messages.create(
             model="claude-opus-4-6",
             max_tokens=4096,
-            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}],
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
             messages=[{"role": "user", "content": prompt}],
         )
 
