@@ -8,7 +8,6 @@ import { useArticles } from '@/hooks/useArticles';
 import { useModules } from '@/hooks/useModules';
 import { ArticleCard } from '@/components/articles/ArticleCard';
 import { AddArticleDialog } from '@/components/articles/AddArticleDialog';
-import { AppHeader } from '@/components/layout/AppHeader';
 import { FOCUS_AREAS } from '@/lib/focus-areas';
 import { useToast } from '@/hooks/use-toast';
 
@@ -75,10 +74,7 @@ const Articles = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppHeader />
-
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Title + add button */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
@@ -143,10 +139,8 @@ const Articles = () => {
             ))}
           </div>
         )}
-      </main>
-
       <AddArticleDialog open={dialogOpen} onOpenChange={setDialogOpen} onSubmit={handleAdd} />
-    </div>
+    </main>
   );
 };
 

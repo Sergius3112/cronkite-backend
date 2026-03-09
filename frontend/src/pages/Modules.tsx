@@ -3,7 +3,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Search, BookOpen } from 'lucide-react';
-import { AppHeader } from '@/components/layout/AppHeader';
 import { useModules } from '@/hooks/useModules';
 import { ModuleCard } from '@/components/modules/ModuleCard';
 import { ModuleFormDialog } from '@/components/modules/ModuleFormDialog';
@@ -57,10 +56,7 @@ const Modules = () => {
   const openEdit = (m: Module) => { setEditingModule(m); setDialogOpen(true); };
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppHeader />
-
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Page title + create button */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
@@ -121,15 +117,13 @@ const Modules = () => {
             ))}
           </div>
         )}
-      </main>
-
       <ModuleFormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         module={editingModule}
         onSubmit={handleSubmit}
       />
-    </div>
+    </main>
   );
 };
 

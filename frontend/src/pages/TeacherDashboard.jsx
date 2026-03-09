@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, Link, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
-import { ChevronDown, Plus, LogOut, AlertCircle } from 'lucide-react'
+import { ChevronDown, Plus, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
 
 const FOCUS_LABELS = {
@@ -16,7 +16,6 @@ const KS_LABELS = { ks2:'KS2', ks3:'KS3', ks4:'KS4', ks5:'KS5' }
 
 export default function TeacherDashboard() {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
   const [session, setSession] = useState(null)
   const [modules, setModules] = useState([])
   const [recentAssignments, setRecentAssignments] = useState([])
@@ -161,46 +160,7 @@ export default function TeacherDashboard() {
   if (loading) return <FullSpinner />
 
   return (
-    <div className="min-h-screen bg-paper">
-      {/* Header */}
-      <header className="bg-ink border-b-2 border-red sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <div className="flex items-baseline gap-2">
-              <span className="font-serif text-lg text-paper">Cronkite</span>
-              <span className="text-xs text-red uppercase tracking-widest">Teacher</span>
-            </div>
-            <nav className="flex items-center gap-1">
-              {[['Modules','/modules'],['Articles','/articles'],['Reports','/reports'],['Updates','/updates']].map(([label,href]) => (
-                <Link
-                  key={href}
-                  to={href}
-                  className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                    pathname === href
-                      ? 'bg-red text-paper'
-                      : 'text-paper-darker hover:text-paper hover:bg-white/10'
-                  }`}
-                >
-                  {label}
-                </Link>
-              ))}
-            </nav>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-paper-darker hidden sm:block">
-              {session?.user?.user_metadata?.full_name || session?.user?.email}
-            </span>
-            <button
-              onClick={() => { sb.auth.signOut(); navigate('/', { replace: true }) }}
-              className="flex items-center gap-1.5 text-paper-darker border border-[#3a3a3a] hover:border-paper-darker hover:text-paper text-xs px-3 py-1.5 rounded-md transition-all"
-            >
-              <LogOut size={12} /> Sign out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Welcome */}
         <div className="mb-6">
           <h2 className="font-serif text-2xl text-ink">
@@ -295,7 +255,6 @@ export default function TeacherDashboard() {
             </div>
         }
       </div>
-    </div>
   )
 }
 
@@ -468,7 +427,7 @@ function Spinner() {
 
 function FullSpinner() {
   return (
-    <div className="min-h-screen bg-paper flex items-center justify-center">
+    <div className="flex items-center justify-center py-24">
       <div className="w-6 h-6 border-2 border-border border-t-[#c8102e] rounded-full animate-spin" />
     </div>
   )

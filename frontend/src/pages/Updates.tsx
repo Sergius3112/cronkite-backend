@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Plus, X, Sparkles, Lightbulb } from 'lucide-react';
-import { AppHeader } from '@/components/layout/AppHeader';
 import { useModules } from '@/hooks/useModules';
 import { useSuggestions, type SuggestedArticle } from '@/hooks/useSuggestions';
 import { getFocusArea } from '@/lib/focus-areas';
@@ -98,31 +97,25 @@ const Updates = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <AppHeader />
-        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="space-y-6">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i}>
-                <div className="h-6 w-48 bg-muted animate-pulse rounded mb-3" />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {Array.from({ length: 3 }).map((_, j) => (
-                    <div key={j} className="h-36 rounded-lg bg-muted animate-pulse" />
-                  ))}
-                </div>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="space-y-6">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i}>
+              <div className="h-6 w-48 bg-muted animate-pulse rounded mb-3" />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {Array.from({ length: 3 }).map((_, j) => (
+                  <div key={j} className="h-36 rounded-lg bg-muted animate-pulse" />
+                ))}
               </div>
-            ))}
-          </div>
-        </main>
-      </div>
+            </div>
+          ))}
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppHeader />
-
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
             <Sparkles className="h-5 w-5 text-primary" />
@@ -178,8 +171,7 @@ const Updates = () => {
             })}
           </div>
         )}
-      </main>
-    </div>
+    </main>
   );
 };
 

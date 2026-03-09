@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ClipboardList, CheckCircle, Clock, Eye, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { AppHeader } from '@/components/layout/AppHeader';
 import { useModules } from '@/hooks/useModules';
 import { useReportsData } from '@/hooks/useReportsData';
 
@@ -99,28 +98,22 @@ const Reports = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <AppHeader />
-        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-24 rounded-lg bg-muted animate-pulse" />
-            ))}
-          </div>
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="h-72 rounded-lg bg-muted animate-pulse" />
-            <div className="h-72 rounded-lg bg-muted animate-pulse" />
-          </div>
-        </main>
-      </div>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-24 rounded-lg bg-muted animate-pulse" />
+          ))}
+        </div>
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="h-72 rounded-lg bg-muted animate-pulse" />
+          <div className="h-72 rounded-lg bg-muted animate-pulse" />
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppHeader />
-
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Title + filter */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
@@ -245,8 +238,7 @@ const Reports = () => {
             )}
           </CardContent>
         </Card>
-      </main>
-    </div>
+    </main>
   );
 };
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
-import { LogOut, CheckCircle, AlertCircle } from 'lucide-react'
+import { CheckCircle, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
 
 const FOCUS_LABELS = {
@@ -101,29 +101,7 @@ export default function StudentDashboard() {
   if (loading) return <FullSpinner />
 
   return (
-    <div className="min-h-screen bg-paper">
-      {/* Header */}
-      <header className="bg-ink border-b-2 border-red sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-baseline gap-2">
-            <span className="font-serif text-lg text-paper">Cronkite</span>
-            <span className="text-xs text-red uppercase tracking-widest">Student Inbox</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-paper-darker hidden sm:block">
-              {session?.user?.user_metadata?.full_name || session?.user?.email}
-            </span>
-            <button
-              onClick={() => { sb.auth.signOut(); navigate('/', { replace: true }) }}
-              className="flex items-center gap-1.5 text-paper-darker border border-[#3a3a3a] hover:border-paper-darker hover:text-paper text-xs px-3 py-1.5 rounded-md transition-all"
-            >
-              <LogOut size={12} /> Sign out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-3xl mx-auto px-6 py-8">
+    <div className="max-w-3xl mx-auto px-6 py-8">
         {/* Welcome */}
         <div className="mb-6">
           <h2 className="font-serif text-2xl text-ink">
@@ -188,7 +166,6 @@ export default function StudentDashboard() {
                 ))}
               </div>
         )}
-      </div>
     </div>
   )
 }
@@ -270,7 +247,7 @@ function Spinner() {
 
 function FullSpinner() {
   return (
-    <div className="min-h-screen bg-paper flex items-center justify-center">
+    <div className="flex items-center justify-center py-24">
       <div className="w-6 h-6 border-2 border-border border-t-[#c8102e] rounded-full animate-spin" />
     </div>
   )
