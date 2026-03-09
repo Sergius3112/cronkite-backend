@@ -14,11 +14,11 @@ export function useModules() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { setLoading(false); return; }
 
-    // SELECT aliasing maps our schema columns to the Module type:
-    // title → name, focus_point → focus_area
+    // Select real column names (PostgREST doesn't support SQL AS aliasing).
+    // Map title → name and focus_point → focus_area in JS to match Module type.
     const { data, error: qErr } = await supabase
       .from('modules')
-      .select('id, title as name, description, focus_point as focus_area, key_stage, teacher_id, created_at')
+      .select('id, title, description, focus_point, key_stage, teacher_id, created_at')
       .eq('teacher_id', session.user.id)
       .order('created_at', { ascending: false });
 
@@ -27,6 +27,8 @@ export function useModules() {
     } else if (data) {
       setModules(data.map((m: any) => ({
         ...m,
+        name: m.title,
+        focus_area: m.focus_point,
         status: 'active',
         article_count: 0,
         assignment_count: 0,

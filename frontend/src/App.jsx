@@ -10,6 +10,7 @@ import Modules from './pages/Modules'
 import Articles from './pages/Articles'
 import Reports from './pages/Reports'
 import Updates from './pages/Updates'
+import StudentModules from './pages/StudentModules'
 
 function Shell({ children }) {
   return <AppLayout>{children}</AppLayout>
@@ -27,7 +28,8 @@ export default function App() {
         <Route path="/modules"  element={<Shell><Modules /></Shell>} />
         <Route path="/articles" element={<Shell><Articles /></Shell>} />
         <Route path="/reports"  element={<Shell><Reports /></Shell>} />
-        <Route path="/updates"  element={<Shell><Updates /></Shell>} />
+        <Route path="/updates"          element={<Shell><Updates /></Shell>} />
+        <Route path="/student/modules"  element={<Shell><StudentModules /></Shell>} />
         <Route path="*"        element={<Navigate to="/" replace />} />
       </Routes>
     </TooltipProvider>

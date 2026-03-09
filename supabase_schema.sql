@@ -216,19 +216,32 @@ create policy "users: teacher reads students" on public.users
 
 
 -- ── modules ───────────────────────────────────────────────────────────────────
--- Teachers have full control over their own modules
-create policy "modules: teacher full" on public.modules
-  for all using (auth.uid() = teacher_id);
+-- Run these drops first to remove the old policies (including the recursive one):
+--   DROP POLICY IF EXISTS "modules: teacher full"  ON public.modules;
+--   DROP POLICY IF EXISTS "modules: student read"  ON public.modules;
+--   DROP POLICY IF EXISTS "modules_select"         ON public.modules;
+--   DROP POLICY IF EXISTS "modules_insert"         ON public.modules;
+--   DROP POLICY IF EXISTS "modules_update"         ON public.modules;
+--   DROP POLICY IF EXISTS "modules_student_read"   ON public.modules;
 
--- Students can read a module if they have any result for one of its assignments
-create policy "modules: student read" on public.modules
+-- Teachers manage their own modules
+create policy "modules_select" on public.modules
+  for select using (auth.uid() = teacher_id);
+
+create policy "modules_insert" on public.modules
+  for insert with check (auth.uid() = teacher_id);
+
+create policy "modules_update" on public.modules
+  for update using (auth.uid() = teacher_id);
+
+-- Students can read modules they have assignments in.
+-- Uses auth.email() and the student_email column — no cross-table recursion.
+create policy "modules_student_read" on public.modules
   for select using (
     exists (
-      select 1
-      from   public.assignments     a
-      join   public.student_results sr on sr.assignment_id = a.id
-      where  a.module_id   = modules.id
-        and  sr.student_id = auth.uid()
+      select 1 from public.assignments a
+      where  a.module_id    = modules.id
+        and  a.student_email = auth.email()
     )
   );
 
@@ -244,15 +257,12 @@ create policy "assignments: teacher full" on public.assignments
     )
   );
 
--- Students can read an assignment if they have a result for it
-create policy "assignments: student read" on public.assignments
-  for select using (
-    exists (
-      select 1 from public.student_results sr
-      where  sr.assignment_id = assignments.id
-        and  sr.student_id    = auth.uid()
-    )
-  );
+-- Students can read assignments sent to them directly (no cross-table join, no recursion).
+-- Drop old policy first:
+--   DROP POLICY IF EXISTS "assignments: student read" ON public.assignments;
+--   DROP POLICY IF EXISTS "assignments_student_read"  ON public.assignments;
+create policy "assignments_student_read" on public.assignments
+  for select using (student_email = auth.email());
 
 
 -- ── student_results ───────────────────────────────────────────────────────────

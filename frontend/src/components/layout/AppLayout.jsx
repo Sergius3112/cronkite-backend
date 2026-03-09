@@ -16,8 +16,8 @@ const TEACHER_NAV = [
 ]
 
 const STUDENT_NAV = [
-  { label: 'Student Inbox', href: '/student',  icon: Inbox    },
-  { label: 'Modules',       href: '/modules',  icon: BookOpen },
+  { label: 'Student Inbox', href: '/student',         icon: Inbox    },
+  { label: 'Modules',       href: '/student/modules', icon: BookOpen },
 ]
 
 export function AppLayout({ children }) {
@@ -34,7 +34,8 @@ export function AppLayout({ children }) {
   }, [])
 
   // Nav is determined entirely by the current route
-  const items = pathname === '/student' ? STUDENT_NAV : TEACHER_NAV
+  const isStudentRoute = pathname === '/student' || pathname.startsWith('/student/')
+  const items = isStudentRoute ? STUDENT_NAV : TEACHER_NAV
 
   async function signOut() {
     await sb.auth.signOut()
@@ -47,7 +48,7 @@ export function AppLayout({ children }) {
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-5 h-14 border-b border-border shrink-0">
           <Link
-            to={pathname === '/student' ? '/student' : '/modules'}
+            to={isStudentRoute ? '/student' : '/modules'}
             className="flex items-center gap-2 min-w-0"
             onClick={() => setMobileOpen(false)}
           >
