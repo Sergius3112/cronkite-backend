@@ -24,11 +24,11 @@ function CronkiteWordmark() {
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
       <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <rect x="2" y="4" width="28" height="24" rx="2" stroke="#22c55e" strokeWidth="2.5" fill="none"/>
-        <rect x="6" y="9" width="12" height="2" rx="1" fill="#22c55e"/>
-        <rect x="6" y="13" width="20" height="2" rx="1" fill="#22c55e"/>
-        <rect x="6" y="17" width="20" height="2" rx="1" fill="#22c55e"/>
-        <rect x="6" y="21" width="14" height="2" rx="1" fill="#22c55e"/>
+        <rect x="2" y="4" width="28" height="24" rx="2" stroke="#2d6a4f" strokeWidth="2.5" fill="none"/>
+        <rect x="6" y="9" width="12" height="2" rx="1" fill="#2d6a4f"/>
+        <rect x="6" y="13" width="20" height="2" rx="1" fill="#2d6a4f"/>
+        <rect x="6" y="17" width="20" height="2" rx="1" fill="#2d6a4f"/>
+        <rect x="6" y="21" width="14" height="2" rx="1" fill="#2d6a4f"/>
       </svg>
       <span
         aria-label="Cronkite"
@@ -39,9 +39,9 @@ function CronkiteWordmark() {
           {'\u0131'}
           <span
             aria-hidden="true"
-            style={{ position: 'absolute', top: '-8px', left: '50%', transform: 'translateX(-50%)', color: '#22c55e', fontSize: '14px', lineHeight: 1 }}
+            style={{ position: 'absolute', top: '-6px', left: '50%', transform: 'translateX(-50%)', color: '#2d6a4f', fontSize: '10px', lineHeight: 1 }}
           >
-            *
+            ✱
           </span>
         </span>
         {'te'}
