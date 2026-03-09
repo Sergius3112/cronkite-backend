@@ -1,6 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '@/lib/AuthContext'
 import { sb } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import {
@@ -8,36 +7,34 @@ import {
   BarChart3, Sparkles, Inbox, LogOut, Menu,
 } from 'lucide-react'
 
-const NAV = [
-  { label: 'Dashboard',     href: '/teacher',  icon: LayoutDashboard, roles: ['teacher', 'admin'] },
-  { label: 'Modules',       href: '/modules',  icon: BookOpen,        roles: ['teacher', 'admin', 'student'] },
-  { label: 'Articles',      href: '/articles', icon: Newspaper,       roles: ['teacher', 'admin'] },
-  { label: 'Reports',       href: '/reports',  icon: BarChart3,       roles: ['teacher', 'admin'] },
-  { label: 'Updates',       href: '/updates',  icon: Sparkles,        roles: ['teacher', 'admin'] },
-  { label: 'Student Inbox', href: '/student',  icon: Inbox,           roles: ['student'] },
+const TEACHER_NAV = [
+  { label: 'Dashboard',     href: '/teacher',  icon: LayoutDashboard },
+  { label: 'Modules',       href: '/modules',  icon: BookOpen        },
+  { label: 'Articles',      href: '/articles', icon: Newspaper       },
+  { label: 'Reports',       href: '/reports',  icon: BarChart3       },
+  { label: 'Updates',       href: '/updates',  icon: Sparkles        },
+]
+
+const STUDENT_NAV = [
+  { label: 'Student Inbox', href: '/student',  icon: Inbox    },
+  { label: 'Modules',       href: '/modules',  icon: BookOpen },
 ]
 
 export function AppLayout({ children }) {
-  const { session, role } = useAuth()
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [userName, setUserName] = useState('')
 
-  // Infer nav role from route + detected role.
-  // Teacher-only routes always get teacher nav; /student always gets student nav.
-  // On shared routes (/modules), fall back to detected role or teacher.
-  const TEACHER_ROUTES = ['/teacher', '/articles', '/reports', '/updates']
-  const effectiveRole = TEACHER_ROUTES.includes(pathname)
-    ? 'teacher'
-    : pathname === '/student'
-      ? 'student'
-      : (role === 'teacher' || role === 'admin')
-        ? role
-        : role === 'student'
-          ? 'student'
-          : 'teacher'
-  const items = NAV.filter(n => n.roles.includes(effectiveRole))
-  const userName = session?.user?.user_metadata?.full_name || session?.user?.email || ''
+  // Fetch username once for display — no role logic needed
+  useEffect(() => {
+    sb.auth.getSession().then(({ data: { session } }) => {
+      setUserName(session?.user?.user_metadata?.full_name || session?.user?.email || '')
+    })
+  }, [])
+
+  // Nav is determined entirely by the current route
+  const items = pathname === '/student' ? STUDENT_NAV : TEACHER_NAV
 
   async function signOut() {
     await sb.auth.signOut()
@@ -50,7 +47,7 @@ export function AppLayout({ children }) {
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-5 h-14 border-b border-border shrink-0">
           <Link
-            to={effectiveRole === 'student' ? '/student' : '/modules'}
+            to={pathname === '/student' ? '/student' : '/modules'}
             className="flex items-center gap-2 min-w-0"
             onClick={() => setMobileOpen(false)}
           >

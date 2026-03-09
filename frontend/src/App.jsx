@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
-import { AuthProvider } from '@/lib/AuthContext'
 import { AppLayout } from '@/components/layout/AppLayout'
 import Login from './pages/Login'
 import TeacherDashboard from './pages/TeacherDashboard'
@@ -18,21 +17,19 @@ function Shell({ children }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <Routes>
-          <Route path="/"        element={<Login />} />
-          <Route path="/teacher" element={<Shell><TeacherDashboard /></Shell>} />
-          <Route path="/student" element={<Shell><StudentDashboard /></Shell>} />
-          <Route path="/modules"  element={<Shell><Modules /></Shell>} />
-          <Route path="/articles" element={<Shell><Articles /></Shell>} />
-          <Route path="/reports"  element={<Shell><Reports /></Shell>} />
-          <Route path="/updates"  element={<Shell><Updates /></Shell>} />
-          <Route path="*"        element={<Navigate to="/" replace />} />
-        </Routes>
-      </TooltipProvider>
-    </AuthProvider>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <Routes>
+        <Route path="/"        element={<Login />} />
+        <Route path="/teacher" element={<Shell><TeacherDashboard /></Shell>} />
+        <Route path="/student" element={<Shell><StudentDashboard /></Shell>} />
+        <Route path="/modules"  element={<Shell><Modules /></Shell>} />
+        <Route path="/articles" element={<Shell><Articles /></Shell>} />
+        <Route path="/reports"  element={<Shell><Reports /></Shell>} />
+        <Route path="/updates"  element={<Shell><Updates /></Shell>} />
+        <Route path="*"        element={<Navigate to="/" replace />} />
+      </Routes>
+    </TooltipProvider>
   )
 }

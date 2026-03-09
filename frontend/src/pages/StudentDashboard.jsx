@@ -26,9 +26,7 @@ export default function StudentDashboard() {
   const [completing, setCompleting] = useState({})
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 3000)
     sb.auth.getSession().then(({ data: { session } }) => {
-      clearTimeout(timer)
       if (!session) { navigate('/', { replace: true }); return }
       setSession(session)
       loadAll(session)
@@ -100,8 +98,6 @@ export default function StudentDashboard() {
   const firstName = (session?.user?.user_metadata?.full_name || session?.user?.email || '').split(' ')[0]
   const uniqueModules = new Set([...pending, ...completed].map(a => a.module_id)).size
 
-  if (loading) return <FullSpinner />
-
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
         {/* Welcome */}
@@ -140,7 +136,9 @@ export default function StudentDashboard() {
         </div>
 
         {/* Assignment list */}
-        {tab === 'pending' && (
+        {loading && <div className="text-xs text-ink-light py-4">Loading assignments…</div>}
+
+        {!loading && tab === 'pending' && (
           pending.length === 0
             ? <EmptyState title="All caught up!" text="No pending assignments. Check back when your teacher adds more." />
             : <div className="flex flex-col gap-3">
@@ -155,7 +153,7 @@ export default function StudentDashboard() {
               </div>
         )}
 
-        {tab === 'completed' && (
+        {!loading && tab === 'completed' && (
           completed.length === 0
             ? <EmptyState title="Nothing completed yet" text="Mark assignments as complete after analysing them." />
             : <div className="flex flex-col gap-3">

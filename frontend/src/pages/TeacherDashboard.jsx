@@ -32,9 +32,7 @@ export default function TeacherDashboard() {
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 3000)
     sb.auth.getSession().then(({ data: { session } }) => {
-      clearTimeout(timer)
       if (!session) { navigate('/', { replace: true }); return }
       setSession(session)
       loadAll(session)
@@ -159,8 +157,6 @@ export default function TeacherDashboard() {
 
   const firstName = (session?.user?.user_metadata?.full_name || session?.user?.email || '').split(' ')[0]
 
-  if (loading) return <FullSpinner />
-
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Welcome */}
@@ -224,7 +220,11 @@ export default function TeacherDashboard() {
 
         {error && <InlineError msg={error} onRetry={() => session && loadAll(session)} />}
 
-        {modules.length === 0 && !error && (
+        {loading && !error && (
+          <div className="text-xs text-ink-light py-4">Loading modules…</div>
+        )}
+
+        {!loading && modules.length === 0 && !error && (
           <EmptyState title="No active modules" text="Create your first module above to get started." />
         )}
 
@@ -244,7 +244,8 @@ export default function TeacherDashboard() {
 
         {/* Recent Assignments */}
         <SectionHd>Recent Assignments</SectionHd>
-        {recentAssignments.length === 0
+        {loading && <div className="text-xs text-ink-light py-4">Loading assignments…</div>}
+        {!loading && recentAssignments.length === 0
           ? <EmptyState title="No assignments yet" text="Add articles inside a module." />
           : <div className="bg-paper-dark border border-border rounded-xl overflow-hidden">
               {recentAssignments.map((a, i) => (
