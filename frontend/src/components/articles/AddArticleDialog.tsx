@@ -4,17 +4,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
+import { sb } from '@/lib/supabase';
 import { ArticleAnalysisCard, type AnalysisData } from './ArticleAnalysisCard';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (url: string) => Promise<any>;
+  onComplete?: () => void;
 }
 
 type Phase = 'input' | 'analysing' | 'result';
 
-export function AddArticleDialog({ open, onOpenChange, onSubmit }: Props) {
+export function AddArticleDialog({ open, onOpenChange, onComplete }: Props) {
   const [url, setUrl] = useState('');
   const [phase, setPhase] = useState<Phase>('input');
   const [error, setError] = useState('');
@@ -47,9 +48,27 @@ export function AddArticleDialog({ open, onOpenChange, onSubmit }: Props) {
 
     setPhase('analysing');
     try {
-      const data = await onSubmit(trimmed);
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) throw new Error('Not authenticated — please sign in again');
+
+      const res = await fetch('/api/analyse', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ url: trimmed }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? 'Analysis failed');
+      }
+
+      const data: AnalysisData = await res.json();
       setResult(data);
       setPhase('result');
+      onComplete?.();
     } catch (err: any) {
       setError(err.message ?? 'Analysis failed');
       setPhase('input');

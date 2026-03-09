@@ -13,7 +13,6 @@ BASE_DIR = Path(__file__).parent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 from typing import Optional
-from jose import jwt
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -37,13 +36,13 @@ def get_current_user(authorization: str = Header(None)) -> dict:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
     token = authorization.split(" ")[1]
     try:
-        payload = jwt.decode(
-            token,
-            os.environ.get("SUPABASE_JWT_SECRET", ""),
-            algorithms=["HS256"],
-            options={"verify_aud": False},
-        )
-        return payload
+        supa = get_supabase()
+        res = supa.auth.get_user(token)
+        if not res or not res.user:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+        return {"sub": str(res.user.id), "email": res.user.email or ""}
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 

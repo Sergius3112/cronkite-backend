@@ -27,7 +27,7 @@ const TAB_STATUS_MAP: Record<string, string[]> = {
 };
 
 const Articles = () => {
-  const { articles, loading, analyseArticle, approveArticle } = useArticles();
+  const { articles, loading, approveArticle, refetch } = useArticles();
   const { modules } = useModules();
   const { toast } = useToast();
 
@@ -55,10 +55,6 @@ const Articles = () => {
     approved: articles.filter(a => a.status === 'approved').length,
     analysed: articles.filter(a => a.status === 'analysed').length,
   }), [articles]);
-
-  const handleAdd = async (url: string) => {
-    return await analyseArticle(url);
-  };
 
   const handleApprove = async (id: string) => {
     await approveArticle(id);
@@ -153,7 +149,7 @@ const Articles = () => {
         </div>
       )}
 
-      <AddArticleDialog open={dialogOpen} onOpenChange={setDialogOpen} onSubmit={handleAdd} />
+      <AddArticleDialog open={dialogOpen} onOpenChange={setDialogOpen} onComplete={() => { refetch(); setTab('analysed'); }} />
     </main>
   );
 };
