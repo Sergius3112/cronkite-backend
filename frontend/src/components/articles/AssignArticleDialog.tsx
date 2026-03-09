@@ -79,6 +79,28 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
       });
       if (error) throw error;
       setDone(true);
+
+      // Send email notification if a student email was provided
+      if (studentEmail.trim()) {
+        const selectedModule = modules.find(m => m.id === moduleId);
+        try {
+          await fetch('/api/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              student_email: studentEmail.trim(),
+              article_title: article.title,
+              article_url: article.url,
+              module_name: selectedModule?.name ?? '',
+              teacher_name: session.user.user_metadata?.full_name || session.user.email || '',
+              due_date: dueDate || null,
+            }),
+          });
+        } catch (notifyErr) {
+          // Non-fatal — assignment succeeded, just log the notification failure
+          console.warn('[AssignArticleDialog] notify failed:', notifyErr);
+        }
+      }
     } catch (err: any) {
       toast({ title: 'Error assigning article', description: err.message, variant: 'destructive' });
     } finally {

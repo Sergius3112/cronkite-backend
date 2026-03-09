@@ -897,6 +897,78 @@ Return ONLY valid JSON with this exact structure:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Email notifications (Resend) ──────────────────────────────────────────────
+
+class NotifyRequest(BaseModel):
+    student_email: str
+    article_title: str
+    article_url: str
+    module_name: str
+    teacher_name: Optional[str] = None
+    due_date: Optional[str] = None
+    assignment_id: Optional[str] = None
+
+@app.post("/api/notify")
+async def api_notify(req: NotifyRequest):
+    """Send an assignment notification email to a student via Resend."""
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="RESEND_API_KEY not configured")
+
+    import resend
+    resend.api_key = api_key
+
+    due_line = f"<p><strong>Due:</strong> {req.due_date}</p>" if req.due_date else ""
+    teacher_line = f" from <strong>{req.teacher_name}</strong>" if req.teacher_name else ""
+    cronkite_url = "https://cronkite-backend-production.up.railway.app"
+
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; padding: 32px; color: #1a1a1a; background: #fff;">
+  <div style="border-bottom: 2px solid #2d6a4f; padding-bottom: 16px; margin-bottom: 24px;">
+    <span style="font-size: 18px; font-weight: 700; color: #2d6a4f;">Cronkite</span>
+  </div>
+  <h2 style="font-size: 20px; font-weight: 700; margin: 0 0 8px;">New article assigned</h2>
+  <p style="color: #555; margin: 0 0 24px;">
+    You have been assigned a new article{teacher_line} in <strong>{req.module_name}</strong>.
+  </p>
+  <div style="background: #f8f9fa; border-left: 4px solid #2d6a4f; padding: 16px 20px; margin-bottom: 24px; border-radius: 0 8px 8px 0;">
+    <p style="font-size: 16px; font-weight: 600; margin: 0 0 8px;">{req.article_title}</p>
+    <a href="{req.article_url}" style="color: #2d6a4f; font-size: 13px; word-break: break-all;">{req.article_url}</a>
+    {due_line}
+  </div>
+  <div style="display: flex; gap: 12px; margin-bottom: 32px;">
+    <a href="{req.article_url}" style="display: inline-block; background: #1a1a1a; color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600;">
+      Read Article
+    </a>
+    <a href="{cronkite_url}" style="display: inline-block; background: #2d6a4f; color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600;">
+      View in Cronkite
+    </a>
+  </div>
+  <p style="font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 16px; margin: 0;">
+    Sent by Cronkite · Media Literacy Platform
+  </p>
+</body>
+</html>
+"""
+
+    try:
+        params = {
+            "from": "Cronkite <notifications@cronkite.education>",
+            "to": [req.student_email],
+            "subject": f"New article assigned: {req.article_title}",
+            "html": html,
+        }
+        response = resend.Emails.send(params)
+        logger.info(f"/api/notify sent to {req.student_email}, id={response.get('id')}")
+        return {"ok": True, "id": response.get("id")}
+    except Exception as e:
+        logger.error(f"/api/notify error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── SPA catch-all — must be the very last route ───────────────────────────────
 # Serves index.html for any path not matched by an API route above,
 # allowing React Router to handle client-side navigation.

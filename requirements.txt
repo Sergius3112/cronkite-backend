@@ -10,3 +10,4 @@ supabase
 youtube-transcript-api
 python-jose[cryptography]
 anthropic>=0.42.0
+resend

@@ -75,11 +75,12 @@ const Modules = () => {
   async function openDetail(m: Module) {
     setDetailModule(m);
     setLoadingAssignments(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('assignments')
-      .select('id, status, article_id, article_title, article_url, articles(id, title, source, url, analysis)')
+      .select('*, articles(*)')
       .eq('module_id', m.id)
       .order('created_at', { ascending: false });
+    console.log('[Modules] assignments for module', m.id, data, error);
     setModuleAssignments((data as ModuleAssignment[]) || []);
     setLoadingAssignments(false);
   }
