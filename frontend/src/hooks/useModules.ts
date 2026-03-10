@@ -24,14 +24,40 @@ export function useModules() {
 
     if (qErr) {
       setError(qErr.message);
-    } else if (data) {
+      setLoading(false);
+      return;
+    }
+
+    if (data) {
+      // Fetch article + assignment counts for all modules in parallel
+      const counts = await Promise.all(
+        data.map(async (m: any) => {
+          const [artRes, assignRes] = await Promise.all([
+            supabase
+              .from('assignments')
+              .select('article_id', { count: 'exact', head: false })
+              .eq('module_id', m.id),
+            supabase
+              .from('assignments')
+              .select('*', { count: 'exact', head: true })
+              .eq('module_id', m.id)
+              .not('student_email', 'is', null),
+          ]);
+          // Deduplicate article_ids for the article count
+          const uniqueArticles = new Set((artRes.data ?? []).map((r: any) => r.article_id).filter(Boolean));
+          return { id: m.id, article_count: uniqueArticles.size, assignment_count: assignRes.count ?? 0 };
+        })
+      );
+      const countById: Record<string, { article_count: number; assignment_count: number }> = {};
+      counts.forEach(c => { countById[c.id] = { article_count: c.article_count, assignment_count: c.assignment_count }; });
+
       setModules(data.map((m: any) => ({
         ...m,
         name: m.title,
         focus_area: m.focus_point,
         status: 'active',
-        article_count: 0,
-        assignment_count: 0,
+        article_count: countById[m.id]?.article_count ?? 0,
+        assignment_count: countById[m.id]?.assignment_count ?? 0,
       })));
     }
     setLoading(false);

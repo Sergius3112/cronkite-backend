@@ -86,23 +86,27 @@ const Modules = () => {
 
       const assignments = assignData ?? [];
       const articleIds = assignments.map((a: any) => a.article_id).filter(Boolean);
+      const uniqueArticleIds = [...new Set(articleIds)];
 
       // Step 2: fetch the corresponding articles by id
       let articlesById: Record<string, any> = {};
-      if (articleIds.length > 0) {
+      if (uniqueArticleIds.length > 0) {
         const { data: artData, error: artErr } = await supabase
           .from('articles')
           .select('*')
-          .in('id', articleIds);
+          .in('id', uniqueArticleIds);
         console.log('[Modules] articles:', artData, artErr);
         (artData ?? []).forEach((a: any) => { articlesById[a.id] = a; });
       }
 
-      // Step 3: merge
-      const merged = assignments.map((a: any) => ({
-        ...a,
-        articles: articlesById[a.article_id] ?? null,
-      }));
+      // Step 3: merge and deduplicate by article_id (keep first occurrence)
+      const seenArticleIds = new Set<string>();
+      const merged = assignments.reduce((acc: any[], a: any) => {
+        if (a.article_id && seenArticleIds.has(a.article_id)) return acc;
+        if (a.article_id) seenArticleIds.add(a.article_id);
+        acc.push({ ...a, articles: articlesById[a.article_id] ?? null });
+        return acc;
+      }, []);
       setModuleAssignments(merged as ModuleAssignment[]);
     } finally {
       setLoadingAssignments(false);
