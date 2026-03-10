@@ -194,7 +194,8 @@ def get_youtube_transcript(video_id: str) -> dict:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([f"https://youtube.com/watch?v={video_id}"])
 
-            model = whisper.load_model("base")
+            # "base" needs ~1GB RAM on Railway; use "tiny" if memory is constrained
+            model = whisper.load_model("base")  # Use "tiny" for lower memory usage
             result = model.transcribe(audio_path)
             transcript_text = result['text']
             logger.info(f"Whisper transcription complete for {video_id}")
