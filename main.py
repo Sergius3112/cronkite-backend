@@ -129,6 +129,51 @@ class ApiAnalyseRequest(BaseModel):
 def is_youtube_url(url: str) -> bool:
     return bool(re.search(r'(youtube\.com/watch|youtu\.be/)', url))
 
+def get_youtube_id(url: str) -> str:
+    patterns = [
+        r'youtube\.com/watch\?v=([^&]+)',
+        r'youtu\.be/([^?]+)',
+        r'youtube\.com/shorts/([^?]+)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+def get_youtube_transcript(video_id: str) -> dict:
+    from youtube_transcript_api import YouTubeTranscriptApi
+    import yt_dlp
+
+    try:
+        transcript_list = YouTubeTranscriptApi.get_transcript(
+            video_id, languages=['en', 'en-GB', 'en-US']
+        )
+        transcript_text = ' '.join([t['text'] for t in transcript_list])
+    except Exception:
+        transcript_text = "Transcript not available"
+
+    try:
+        ydl_opts = {'quiet': True, 'no_warnings': True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(
+                f"https://youtube.com/watch?v={video_id}", download=False
+            )
+            return {
+                'title': info.get('title', 'Unknown'),
+                'channel': info.get('uploader', 'Unknown'),
+                'description': info.get('description', '')[:500],
+                'view_count': info.get('view_count', 0),
+                'upload_date': info.get('upload_date', ''),
+                'transcript': transcript_text,
+            }
+    except Exception:
+        return {
+            'title': 'Unknown',
+            'channel': 'Unknown',
+            'transcript': transcript_text,
+        }
+
 def is_twitter_url(url: str) -> bool:
     return bool(re.search(r'(twitter\.com|x\.com)/\w+/status/', url))
 
@@ -755,12 +800,40 @@ async def api_analyse(req: ApiAnalyseRequest, authorization: str = Header(None),
     if not api_key:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
 
+    # Build YouTube context block if applicable
+    youtube_context = ""
+    if is_youtube_url(req.url):
+        video_id = get_youtube_id(req.url)
+        if video_id:
+            try:
+                yt = get_youtube_transcript(video_id)
+                youtube_context = f"""
+This is a YouTube video.
+Title: {yt.get('title', 'Unknown')}
+Channel: {yt.get('channel', 'Unknown')}
+Upload date: {yt.get('upload_date', 'Unknown')}
+Views: {yt.get('view_count', 'Unknown')}
+Description: {yt.get('description', '')}
+
+Full transcript:
+{yt.get('transcript', 'Transcript not available')}
+
+Analyse this video content as a media literacy expert. Pay special attention to:
+- Spoken loaded language and rhetorical techniques
+- The creator's framing and narrative choices
+- Claims made verbally and their verifiability
+- Emotional manipulation through language and tone
+"""
+                logger.info(f"/api/analyse YouTube transcript fetched for {video_id}, len={len(yt.get('transcript',''))}")
+            except Exception as yt_err:
+                logger.warning(f"/api/analyse YouTube transcript failed for {video_id}: {yt_err}")
+
     prompt = f"""You are a world-class media literacy analyst combining the critical intelligence \
 of an English Literature and Language scholar, the forensic rigour of an \
 investigative journalist, and the contextual awareness of a political historian.
 
 Analyse the content at this URL: {req.url}
-
+{youtube_context}
 Use web search to:
 1. Read the full content
 2. Research the author/creator/journalist — their history, known positions, \
