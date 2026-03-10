@@ -144,14 +144,12 @@ def get_youtube_id(url: str) -> str:
 def get_youtube_transcript(video_id: str) -> dict:
     from youtube_transcript_api import YouTubeTranscriptApi
     import yt_dlp
-    import tempfile
-    import os as _os
 
-    # Get metadata first
+    # Get metadata
     metadata = {'title': 'Unknown', 'channel': 'Unknown',
                 'description': '', 'view_count': 0, 'upload_date': ''}
     try:
-        ydl_opts = {'quiet': True, 'no_warnings': True}
+        ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(
                 f"https://youtube.com/watch?v={video_id}", download=False)
@@ -165,45 +163,17 @@ def get_youtube_transcript(video_id: str) -> dict:
     except Exception as e:
         logger.warning(f"Could not fetch metadata: {e}")
 
-    # Try YouTube transcript API first
+    # Try YouTube transcript API
     try:
         transcript_list = YouTubeTranscriptApi.get_transcript(
             video_id, languages=['en', 'en-GB', 'en-US'])
         transcript_text = ' '.join([t['text'] for t in transcript_list])
-        logger.info(f"Got YouTube transcript for {video_id}")
         return {**metadata, 'transcript': transcript_text,
                 'transcript_source': 'youtube'}
     except Exception:
-        logger.info(f"No YouTube transcript for {video_id}, trying Whisper")
-
-    # Fall back to Whisper transcription
-    try:
-        import whisper
-        with tempfile.TemporaryDirectory() as tmpdir:
-            audio_path = _os.path.join(tmpdir, 'audio.mp3')
-
-            ydl_opts = {
-                'quiet': True,
-                'format': 'bestaudio/best',
-                'outtmpl': audio_path,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                }],
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([f"https://youtube.com/watch?v={video_id}"])
-
-            # "base" needs ~1GB RAM on Railway; use "tiny" if memory is constrained
-            model = whisper.load_model("base")  # Use "tiny" for lower memory usage
-            result = model.transcribe(audio_path)
-            transcript_text = result['text']
-            logger.info(f"Whisper transcription complete for {video_id}")
-            return {**metadata, 'transcript': transcript_text,
-                    'transcript_source': 'whisper'}
-    except Exception as e:
-        logger.error(f"Whisper transcription failed: {e}")
-        return {**metadata, 'transcript': 'Transcript unavailable',
+        # No transcript available — Claude will use web search instead
+        logger.info(f"No transcript for {video_id}, Claude will search")
+        return {**metadata, 'transcript': None,
                 'transcript_source': 'none'}
 
 def is_twitter_url(url: str) -> bool:
@@ -839,7 +809,20 @@ async def api_analyse(req: ApiAnalyseRequest, authorization: str = Header(None),
         if video_id:
             try:
                 yt = get_youtube_transcript(video_id)
-                youtube_context = f"""
+                if yt.get('transcript_source') == 'none':
+                    youtube_context = f"""
+This is a YouTube video.
+Title: {yt.get('title', 'Unknown')}
+Channel: {yt.get('channel', 'Unknown')}
+Upload date: {yt.get('upload_date', 'Unknown')}
+Views: {yt.get('view_count', 'Unknown')}
+Description: {yt.get('description', '')}
+
+No transcript is available for this video. Use web search to find reviews, summaries, news coverage and fact-checks of this video to produce your analysis.
+"""
+                    logger.info(f"/api/analyse no transcript for {video_id}, using web search fallback")
+                else:
+                    youtube_context = f"""
 This is a YouTube video.
 Title: {yt.get('title', 'Unknown')}
 Channel: {yt.get('channel', 'Unknown')}
@@ -848,7 +831,7 @@ Views: {yt.get('view_count', 'Unknown')}
 Description: {yt.get('description', '')}
 
 Full transcript:
-{yt.get('transcript', 'Transcript not available')}
+{yt.get('transcript', '')}
 
 Analyse this video content as a media literacy expert. Pay special attention to:
 - Spoken loaded language and rhetorical techniques
@@ -856,7 +839,7 @@ Analyse this video content as a media literacy expert. Pay special attention to:
 - Claims made verbally and their verifiability
 - Emotional manipulation through language and tone
 """
-                logger.info(f"/api/analyse YouTube transcript fetched for {video_id}, len={len(yt.get('transcript',''))}")
+                    logger.info(f"/api/analyse YouTube transcript fetched for {video_id}, len={len(yt.get('transcript',''))}")
             except Exception as yt_err:
                 logger.warning(f"/api/analyse YouTube transcript failed for {video_id}: {yt_err}")
 

@@ -9,7 +9,6 @@ lxml
 supabase
 youtube-transcript-api
 yt-dlp
-openai-whisper
 ffmpeg-python
 python-jose[cryptography]
 anthropic>=0.42.0
