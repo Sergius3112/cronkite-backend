@@ -75,14 +75,38 @@ const Modules = () => {
   async function openDetail(m: Module) {
     setDetailModule(m);
     setLoadingAssignments(true);
-    const { data, error } = await supabase
-      .from('assignments')
-      .select('*, articles(*)')
-      .eq('module_id', m.id)
-      .order('created_at', { ascending: false });
-    console.log('[Modules] assignments for module', m.id, data, error);
-    setModuleAssignments((data as ModuleAssignment[]) || []);
-    setLoadingAssignments(false);
+    try {
+      // Step 1: fetch assignments for this module
+      const { data: assignData, error: assignErr } = await supabase
+        .from('assignments')
+        .select('*')
+        .eq('module_id', m.id)
+        .order('created_at', { ascending: false });
+      console.log('[Modules] assignments:', assignData, assignErr);
+
+      const assignments = assignData ?? [];
+      const articleIds = assignments.map((a: any) => a.article_id).filter(Boolean);
+
+      // Step 2: fetch the corresponding articles by id
+      let articlesById: Record<string, any> = {};
+      if (articleIds.length > 0) {
+        const { data: artData, error: artErr } = await supabase
+          .from('articles')
+          .select('*')
+          .in('id', articleIds);
+        console.log('[Modules] articles:', artData, artErr);
+        (artData ?? []).forEach((a: any) => { articlesById[a.id] = a; });
+      }
+
+      // Step 3: merge
+      const merged = assignments.map((a: any) => ({
+        ...a,
+        articles: articlesById[a.article_id] ?? null,
+      }));
+      setModuleAssignments(merged as ModuleAssignment[]);
+    } finally {
+      setLoadingAssignments(false);
+    }
   }
 
   async function removeAssignment(assignmentId: string) {
