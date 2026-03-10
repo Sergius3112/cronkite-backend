@@ -69,17 +69,28 @@ export default function TeacherDashboard() {
   }
 
   async function loadRecentAssignments(sess) {
-    const { data, error } = await sb
-      .from('assignments')
-      .select('*, modules(title, focus_point)')
-      .order('created_at', { ascending: false })
-      .limit(10)
-    if (error) { console.warn('assignments query:', error.message); return }
-    const all = data || []
-    setRecentAssignments(all)
-    const pending = all.filter(a => a.status === 'completed').length
+    // Fetch all assignments for stats, with a separate limited query for the recent list
+    const [{ data: allData, error: allErr }, { data: recentData, error: recentErr }] = await Promise.all([
+      sb.from('assignments').select('id, article_id, module_id, student_email, status').eq('teacher_id', sess.user.id),
+      sb.from('assignments').select('*, modules(title, focus_point)').order('created_at', { ascending: false }).limit(10),
+    ])
+    if (allErr) { console.warn('assignments query:', allErr.message); return }
+    if (recentErr) { console.warn('recent assignments query:', recentErr.message); }
+
+    const all = allData || []
+    setRecentAssignments(recentData || [])
+
+    // Deduplicate by article_id per module for Total Assignments
+    const seen = new Set()
+    let uniqueCount = 0
+    all.forEach(a => {
+      const key = `${a.module_id}:${a.article_id}`
+      if (!seen.has(key)) { seen.add(key); uniqueCount++ }
+    })
+
+    const pendingReviews = all.filter(a => a.status === 'completed').length
     const uniqueStudents = new Set(all.map(a => a.student_email).filter(Boolean)).size
-    setStats(s => ({ ...s, assignments: all.length, reviews: pending, students: uniqueStudents }))
+    setStats(s => ({ ...s, assignments: uniqueCount, reviews: pendingReviews, students: uniqueStudents }))
   }
 
   async function loadModuleAssignments(moduleId) {
