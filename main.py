@@ -144,35 +144,66 @@ def get_youtube_id(url: str) -> str:
 def get_youtube_transcript(video_id: str) -> dict:
     from youtube_transcript_api import YouTubeTranscriptApi
     import yt_dlp
+    import tempfile
+    import os as _os
 
-    try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(
-            video_id, languages=['en', 'en-GB', 'en-US']
-        )
-        transcript_text = ' '.join([t['text'] for t in transcript_list])
-    except Exception:
-        transcript_text = "Transcript not available"
-
+    # Get metadata first
+    metadata = {'title': 'Unknown', 'channel': 'Unknown',
+                'description': '', 'view_count': 0, 'upload_date': ''}
     try:
         ydl_opts = {'quiet': True, 'no_warnings': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(
-                f"https://youtube.com/watch?v={video_id}", download=False
-            )
-            return {
+                f"https://youtube.com/watch?v={video_id}", download=False)
+            metadata = {
                 'title': info.get('title', 'Unknown'),
                 'channel': info.get('uploader', 'Unknown'),
                 'description': info.get('description', '')[:500],
                 'view_count': info.get('view_count', 0),
                 'upload_date': info.get('upload_date', ''),
-                'transcript': transcript_text,
             }
+    except Exception as e:
+        logger.warning(f"Could not fetch metadata: {e}")
+
+    # Try YouTube transcript API first
+    try:
+        transcript_list = YouTubeTranscriptApi.get_transcript(
+            video_id, languages=['en', 'en-GB', 'en-US'])
+        transcript_text = ' '.join([t['text'] for t in transcript_list])
+        logger.info(f"Got YouTube transcript for {video_id}")
+        return {**metadata, 'transcript': transcript_text,
+                'transcript_source': 'youtube'}
     except Exception:
-        return {
-            'title': 'Unknown',
-            'channel': 'Unknown',
-            'transcript': transcript_text,
-        }
+        logger.info(f"No YouTube transcript for {video_id}, trying Whisper")
+
+    # Fall back to Whisper transcription
+    try:
+        import whisper
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = _os.path.join(tmpdir, 'audio.mp3')
+
+            ydl_opts = {
+                'quiet': True,
+                'format': 'bestaudio/best',
+                'outtmpl': audio_path,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                }],
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([f"https://youtube.com/watch?v={video_id}"])
+
+            model = whisper.load_model("base")
+            result = model.transcribe(audio_path)
+            transcript_text = result['text']
+            logger.info(f"Whisper transcription complete for {video_id}")
+            return {**metadata, 'transcript': transcript_text,
+                    'transcript_source': 'whisper'}
+    except Exception as e:
+        logger.error(f"Whisper transcription failed: {e}")
+        return {**metadata, 'transcript': 'Transcript unavailable',
+                'transcript_source': 'none'}
 
 def is_twitter_url(url: str) -> bool:
     return bool(re.search(r'(twitter\.com|x\.com)/\w+/status/', url))
