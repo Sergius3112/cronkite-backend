@@ -17,7 +17,7 @@ export function ModuleCard({ module, onEdit, onArchive, onViewDetail }: ModuleCa
   const Icon = focus.icon;
 
   return (
-    <Card className="flex flex-col justify-between hover:shadow-md transition-shadow border-border/60">
+    <Card className="flex flex-col justify-between hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/60 shadow-sm">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${focus.colorClass}`}>

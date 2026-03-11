@@ -39,7 +39,7 @@ export function ArticleCard({ article, modules, onAssign, onApprove, onViewAnaly
 
   return (
     <Card
-      className="flex flex-col hover:shadow-md transition-shadow border-border/60 cursor-pointer group relative"
+      className="flex flex-col hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/60 shadow-sm cursor-pointer group relative"
       onClick={() => onViewAnalysis?.(article)}
     >
       {/* Hover hint */}

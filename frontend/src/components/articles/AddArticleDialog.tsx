@@ -1,11 +1,82 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2 } from 'lucide-react';
 import { sb } from '@/lib/supabase';
 import { ArticleAnalysisCard, type AnalysisData } from './ArticleAnalysisCard';
+
+const ANALYSIS_STEPS = [
+  'Retrieving article content...',
+  'Identifying rhetorical devices and loaded language...',
+  'Cross-referencing claims against primary sources...',
+  'Profiling publication ownership and editorial history...',
+  'Assessing source credibility and bias indicators...',
+  'Mapping persuasion techniques...',
+  'Synthesising scholar-grade analysis...',
+  'Finalising report...',
+];
+
+function AnalysisProgressFeed() {
+  const [activeStep, setActiveStep] = useState(0);
+
+  useEffect(() => {
+    if (activeStep >= ANALYSIS_STEPS.length - 1) return;
+    const t = setTimeout(() => setActiveStep(s => s + 1), 2500);
+    return () => clearTimeout(t);
+  }, [activeStep]);
+
+  return (
+    <>
+      <style>{`
+        @keyframes stepFadeIn {
+          from { opacity: 0; transform: translateY(5px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .step-row { animation: stepFadeIn 0.35s ease forwards; }
+        @keyframes dotPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.4; transform: scale(0.8); }
+        }
+        .active-dot { animation: dotPulse 1s ease-in-out infinite; }
+      `}</style>
+      <div style={{
+        background: '#f5f0e8',
+        borderRadius: 12,
+        padding: '24px 28px',
+        fontFamily: "'Playfair Display', Georgia, serif",
+        minHeight: 200,
+      }}>
+        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 18, fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
+          Cronkite Analysis Engine
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {ANALYSIS_STEPS.slice(0, activeStep + 1).map((step, i) => (
+            <div key={i} className="step-row" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {i < activeStep ? (
+                  <span style={{ color: '#2d6a4f', fontSize: 13, fontWeight: 700 }}>✓</span>
+                ) : (
+                  <span className="active-dot" style={{
+                    display: 'inline-block', width: 7, height: 7,
+                    borderRadius: '50%', background: '#c41e3a',
+                  }} />
+                )}
+              </span>
+              <span style={{
+                fontSize: 13,
+                color: i < activeStep ? '#9ca3af' : '#1a1a1a',
+                fontFamily: "'Playfair Display', Georgia, serif",
+              }}>
+                {step}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
 
 interface Props {
   open: boolean;
@@ -126,14 +197,11 @@ export function AddArticleDialog({ open, onOpenChange, onComplete }: Props) {
         )}
 
         {phase === 'analysing' && (
-          <div className="flex flex-col items-center gap-4 py-10">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <div className="text-center">
-              <p className="text-sm font-medium">Analysing article…</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                This usually takes 15–30 seconds
-              </p>
-            </div>
+          <div className="py-4">
+            <AnalysisProgressFeed />
+            <p className="text-xs text-muted-foreground text-center mt-4">
+              This usually takes 15–30 seconds
+            </p>
           </div>
         )}
 
