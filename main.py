@@ -1257,8 +1257,13 @@ async def api_briefing_send(
             raise
         except Exception:
             raise HTTPException(status_code=401, detail="Unauthorised")
-    sent = await run_daily_briefing()
-    return {"status": "sent", "subscribers": sent}
+    import traceback
+    try:
+        sent = await run_daily_briefing()
+        return {"status": "sent", "subscribers": sent}
+    except Exception as exc:
+        logger.error(f"Briefing failed: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ── SPA catch-all — must be the very last route ───────────────────────────────
