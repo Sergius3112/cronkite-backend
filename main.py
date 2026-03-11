@@ -1000,6 +1000,7 @@ class NotifyRequest(BaseModel):
 async def api_notify(req: NotifyRequest):
     """Send an assignment notification email to a student via Resend."""
     api_key = os.environ.get("RESEND_API_KEY")
+    logger.info(f"Resend API key present: {bool(api_key)}")
     if not api_key:
         raise HTTPException(status_code=503, detail="RESEND_API_KEY not configured")
 
@@ -1042,6 +1043,7 @@ async def api_notify(req: NotifyRequest):
 </html>
 """
 
+    logger.info(f"Attempting to send email to {req.student_email} via Resend")
     try:
         params = {
             "from": "Cronkite <onboarding@resend.dev>",
@@ -1053,7 +1055,7 @@ async def api_notify(req: NotifyRequest):
         logger.info(f"/api/notify sent to {req.student_email}, id={response.get('id')}")
         return {"ok": True, "id": response.get("id")}
     except Exception as e:
-        logger.error(f"/api/notify error: {type(e).__name__}: {e}")
+        logger.error(f"Resend error: {str(e)}, type: {type(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
