@@ -49,15 +49,29 @@ export default function StudentDashboard() {
   }
 
   async function loadAssignments(sess) {
-    const { data, error } = await sb
+    // Step 1: fetch assignments + modules join
+    const { data: assignData, error } = await sb
       .from('assignments')
-      .select('*, modules(id, title, focus_point, description), articles(id, title, url, source, analysis)')
+      .select('*, modules(id, title, focus_point, description)')
       .eq('student_email', sess.user.email)
       .order('created_at', { ascending: false })
 
     if (error) throw error
 
-    const all = data || []
+    const assignments = assignData || []
+
+    // Step 2: fetch articles separately by article_id
+    const articleIds = [...new Set(assignments.map(a => a.article_id).filter(Boolean))]
+    let articlesById = {}
+    if (articleIds.length > 0) {
+      const { data: artData } = await sb
+        .from('articles').select('id, title, url, source, analysis').in('id', articleIds)
+      ;(artData || []).forEach(a => { articlesById[a.id] = a })
+    }
+
+    // Step 3: merge articles into assignments
+    const all = assignments.map(a => ({ ...a, articles: articlesById[a.article_id] ?? null }))
+
     const mMap = {}
     all.forEach(a => { if (a.modules) mMap[a.module_id] = a.modules })
     setModuleMap(mMap)

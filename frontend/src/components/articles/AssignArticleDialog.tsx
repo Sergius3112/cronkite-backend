@@ -27,6 +27,7 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
   const [studentEmail, setStudentEmail] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
+  const [notifying, setNotifying] = useState(false);
   const [done, setDone] = useState(false);
 
   // Fetch modules fresh every time the dialog opens, using the authenticated session
@@ -78,15 +79,19 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
         teacher_id: session.user.id,
       });
       if (error) throw error;
-      setDone(true);
+      setSaving(false);
 
       // Send email notification if a student email was provided
       if (studentEmail.trim()) {
         const selectedModule = modules.find(m => m.id === moduleId);
+        setNotifying(true);
         try {
           await fetch('/api/notify', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
             body: JSON.stringify({
               student_email: studentEmail.trim(),
               article_title: article.title,
@@ -97,14 +102,18 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
             }),
           });
         } catch (notifyErr) {
-          // Non-fatal — assignment succeeded, just log the notification failure
           console.warn('[AssignArticleDialog] notify failed:', notifyErr);
+        } finally {
+          setNotifying(false);
         }
       }
+
+      setDone(true);
     } catch (err: any) {
       toast({ title: 'Error assigning article', description: err.message, variant: 'destructive' });
     } finally {
       setSaving(false);
+      setNotifying(false);
     }
   }
 
@@ -114,6 +123,7 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
       setStudentEmail('');
       setDueDate('');
       setDone(false);
+      setNotifying(false);
       setModules([]);
     }
     onOpenChange(isOpen);
@@ -129,7 +139,7 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
         {done ? (
           <div className="py-8 flex flex-col items-center gap-3 text-center">
             <CheckCircle className="h-10 w-10 text-emerald-500" />
-            <p className="text-sm font-semibold">Article assigned successfully</p>
+            <p className="text-sm font-semibold">Assignment sent!</p>
             <p className="text-xs text-muted-foreground line-clamp-2 max-w-xs">{article?.title}</p>
             <Button className="mt-2 w-full" onClick={() => handleClose(false)}>Done</Button>
           </div>
@@ -185,8 +195,8 @@ export function AssignArticleDialog({ article, open, onOpenChange }: AssignArtic
 
             <DialogFooter>
               <Button variant="outline" onClick={() => handleClose(false)}>Cancel</Button>
-              <Button disabled={!moduleId || saving || modules.length === 0} onClick={handleAssign}>
-                {saving ? 'Assigning…' : 'Assign'}
+              <Button disabled={!moduleId || saving || notifying || modules.length === 0} onClick={handleAssign}>
+                {saving ? 'Assigning…' : notifying ? 'Sending notification…' : 'Assign'}
               </Button>
             </DialogFooter>
           </>
