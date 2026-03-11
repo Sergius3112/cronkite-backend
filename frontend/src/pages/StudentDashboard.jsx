@@ -257,7 +257,7 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
           )}
           {!done && articleUrl && (
             <a
-              href={`${CRONKITE_APP}?url=${encodeURIComponent(articleUrl)}`}
+              href={articleUrl}
               target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 bg-red hover:bg-red-dark text-paper text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:-translate-y-px"
             >
