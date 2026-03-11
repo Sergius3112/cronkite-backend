@@ -1238,9 +1238,25 @@ async def run_daily_briefing() -> int:
 
 
 @app.post("/api/briefing/send")
-async def api_briefing_send(user: dict = Depends(get_current_user)):
-    """Manually trigger the Daily Briefing (teacher auth required)."""
-    emails = get_subscriber_emails()
+async def api_briefing_send(
+    request: Request,
+    secret: str | None = None,
+):
+    """Manually trigger the Daily Briefing. Auth via Bearer token or ?secret=."""
+    if secret != "cronkite2026":
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Unauthorised")
+        token = auth_header.split(" ", 1)[1].strip()
+        try:
+            supa = get_supabase()
+            res = supa.auth.get_user(token)
+            if not res or not res.user:
+                raise HTTPException(status_code=401, detail="Unauthorised")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=401, detail="Unauthorised")
     sent = await run_daily_briefing()
     return {"status": "sent", "subscribers": sent}
 
