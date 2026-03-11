@@ -1106,12 +1106,7 @@ def fetch_top_uk_stories(max_stories: int = 5) -> list:
 
 
 def get_subscriber_emails() -> list:
-    from supabase import create_client as _create_client
-
-    supa = _create_client(
-        os.getenv('SUPABASE_URL', ''),
-        os.getenv('SUPABASE_SERVICE_KEY', ''),
-    )
+    supa = get_supabase()
 
     emails = set()
 
