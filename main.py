@@ -39,6 +39,16 @@ async def startup_check():
         logger.warning("ANTHROPIC_API_KEY not set — /api/analyse will return 503")
     logger.info("===========================================")
 
+    # Start the daily briefing scheduler
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        _scheduler = AsyncIOScheduler(timezone="Europe/London")
+        _scheduler.add_job(run_daily_briefing, 'cron', hour=8, minute=30)
+        _scheduler.start()
+        logger.info("Scheduler started — Daily Briefing at 08:30 Europe/London")
+    except Exception as _sched_err:
+        logger.warning(f"Scheduler failed to start: {_sched_err}")
+
 
 # ── Supabase client (lazy init) ───────────────────────────────────────────────
 
@@ -793,19 +803,17 @@ async def get_my_results(user: dict = Depends(get_current_user)):
 
 # ── AI article analysis (Anthropic + web search) ──────────────────────────────
 
-@app.post("/api/analyse")
-async def api_analyse(req: ApiAnalyseRequest, authorization: str = Header(None), user: dict = Depends(get_current_user)):
-    """Analyse a URL using Claude AI with web search. Saves result to the articles table."""
+async def analyse_url_internal(url: str) -> dict:
+    """Core analysis: calls Claude with web search. Returns analysis dict without saving."""
     import anthropic as _anthropic
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
+        raise ValueError("ANTHROPIC_API_KEY not configured")
 
-    # Build YouTube context block if applicable
     youtube_context = ""
-    if is_youtube_url(req.url):
-        video_id = get_youtube_id(req.url)
+    if is_youtube_url(url):
+        video_id = get_youtube_id(url)
         if video_id:
             try:
                 yt = get_youtube_transcript(video_id)
@@ -820,7 +828,7 @@ Description: {yt.get('description', '')}
 
 No transcript is available for this video. Use web search to find reviews, summaries, news coverage and fact-checks of this video to produce your analysis.
 """
-                    logger.info(f"/api/analyse no transcript for {video_id}, using web search fallback")
+                    logger.info(f"No transcript for {video_id}, using web search fallback")
                 else:
                     youtube_context = f"""
 This is a YouTube video.
@@ -839,15 +847,15 @@ Analyse this video content as a media literacy expert. Pay special attention to:
 - Claims made verbally and their verifiability
 - Emotional manipulation through language and tone
 """
-                    logger.info(f"/api/analyse YouTube transcript fetched for {video_id}, len={len(yt.get('transcript',''))}")
+                    logger.info(f"YouTube transcript fetched for {video_id}, len={len(yt.get('transcript', ''))}")
             except Exception as yt_err:
-                logger.warning(f"/api/analyse YouTube transcript failed for {video_id}: {yt_err}")
+                logger.warning(f"YouTube transcript failed for {video_id}: {yt_err}")
 
     prompt = f"""You are a world-class media literacy analyst combining the critical intelligence \
 of an English Literature and Language scholar, the forensic rigour of an \
 investigative journalist, and the contextual awareness of a political historian.
 
-Analyse the content at this URL: {req.url}
+Analyse the content at this URL: {url}
 {youtube_context}
 Use web search to:
 1. Read the full content
@@ -933,33 +941,31 @@ Return ONLY valid JSON with this exact structure:
   "report_summary": "A 5-7 sentence executive summary written with the authority of a language and literature scholar — covering the content's goal, its primary techniques, the credibility of its source and creator, and what a critical reader should take away. Suitable for a teacher to read before assigning this to students, or for an individual to read as part of their media diet audit."
 }}"""
 
+    client = _anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=8192,
+        tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 10}],
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    text = "".join(block.text for block in response.content if block.type == "text")
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start == -1 or end <= start:
+        raise ValueError(f"No valid JSON in response. Got: {text[:500]}")
+
+    data = json.loads(text[start:end])
+    data["overall_credibility_score"] = data.get("credibility_score", 50)
+    return data
+
+
+@app.post("/api/analyse")
+async def api_analyse(req: ApiAnalyseRequest, authorization: str = Header(None), user: dict = Depends(get_current_user)):
+    """Analyse a URL using Claude AI with web search. Saves result to the articles table."""
     try:
-        client = _anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=8192,
-            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 10}],
-            messages=[{"role": "user", "content": prompt}],
-        )
+        data = await analyse_url_internal(req.url)
 
-        # Extract text blocks only (skip tool_use / tool_result blocks)
-        text = ""
-        for block in response.content:
-            if block.type == "text":
-                text += block.text
-
-        # Parse JSON from response
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start == -1 or end <= start:
-            raise ValueError(f"No valid JSON in response. Got: {text[:500]}")
-
-        data = json.loads(text[start:end])
-
-        # Alias for frontend compatibility
-        data["overall_credibility_score"] = data.get("credibility_score", 50)
-
-        # Save to articles table — use user-scoped client so RLS auth.uid() resolves correctly
         token = (authorization or "").split(" ")[-1]
         supa = get_supabase_as_user(token)
         insert_res = supa.table("articles").insert({
@@ -1062,6 +1068,181 @@ async def api_notify(req: NotifyRequest):
     except Exception as e:
         logger.error(f"Resend error: {str(e)}, type: {type(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Daily Briefing newsletter agent ──────────────────────────────────────────
+
+def fetch_top_uk_stories(max_stories: int = 5) -> list:
+    import feedparser
+
+    feeds = [
+        "http://feeds.bbci.co.uk/news/uk/rss.xml",
+        "https://feeds.skynews.com/feeds/rss/uk.xml",
+        "https://www.theguardian.com/uk/rss",
+        "https://www.independent.co.uk/news/uk/rss",
+    ]
+
+    stories = []
+    seen_titles = set()
+
+    for feed_url in feeds:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries[:3]:
+                title = entry.get('title', '')
+                url = entry.get('link', '')
+                if title and url and title not in seen_titles:
+                    seen_titles.add(title)
+                    stories.append({
+                        'title': title,
+                        'url': url,
+                        'source': feed.feed.get('title', 'Unknown'),
+                        'published': entry.get('published', ''),
+                    })
+        except Exception as e:
+            logger.warning(f"Failed to fetch feed {feed_url}: {e}")
+
+    return stories[:max_stories]
+
+
+def get_subscriber_emails() -> list:
+    from supabase import create_client as _create_client
+
+    supa = _create_client(
+        os.getenv('SUPABASE_URL', ''),
+        os.getenv('SUPABASE_SERVICE_KEY', ''),
+    )
+
+    emails = set()
+
+    try:
+        result = supa.table('profiles').select('email').execute()
+        for row in result.data:
+            if row.get('email'):
+                emails.add(row['email'])
+    except Exception:
+        pass
+
+    try:
+        result = supa.table('assignments').select('student_email').execute()
+        for row in result.data:
+            if row.get('student_email'):
+                emails.add(row['student_email'])
+    except Exception:
+        pass
+
+    return list(emails)
+
+
+def build_newsletter_html(stories_with_analysis: list, date_str: str) -> str:
+    articles_html = ""
+    for story in stories_with_analysis:
+        analysis = story.get('analysis', {})
+        score = analysis.get('credibility_score', 0)
+        score_color = '#c41e3a' if score < 40 else '#d97706' if score < 70 else '#16a34a'
+        score_bg   = '#fff1f3' if score < 40 else '#fffbeb' if score < 70 else '#f0fdf4'
+
+        persuasion = ""
+        techniques = analysis.get('persuasion_techniques', [])
+        if techniques:
+            persuasion = f"<p style='font-size:12px;color:#78716c;margin-top:8px'>⚠️ {techniques[0].get('technique', '')}</p>"
+
+        bias = analysis.get('bias_direction', 0)
+        bias_label = (
+            "Strong left"   if bias < -60 else
+            "Left-leaning"  if bias < -20 else
+            "Centre"        if bias <  20 else
+            "Right-leaning" if bias <  60 else
+            "Strong right"
+        )
+
+        articles_html += f"""
+        <div style="border:1px solid #e8e4df;border-radius:12px;padding:20px;margin-bottom:16px;background:#ffffff;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+            <span style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#a8a29e">{story.get('source', '')}</span>
+            <span style="background:{score_bg};color:{score_color};font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">{score}%</span>
+          </div>
+          <h3 style="font-family:Georgia,serif;font-size:17px;font-weight:600;line-height:1.35;margin-bottom:8px;color:#1c1917">
+            <a href="{story.get('url', '')}" style="color:#1c1917;text-decoration:none">{story.get('title', '')}</a>
+          </h3>
+          <p style="font-size:13px;color:#44403c;line-height:1.55;margin-bottom:8px">{(analysis.get('summary') or '')[:200] or 'Analysis pending.'}</p>
+          <p style="font-size:12px;color:#78716c">📊 Bias: {bias_label}</p>
+          {persuasion}
+        </div>
+        """
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f8f7f5;font-family:-apple-system,sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:24px 16px">
+    <div style="background:#1c1917;border-radius:12px;padding:28px 28px 24px;margin-bottom:20px;text-align:center">
+      <h1 style="font-family:Georgia,serif;font-size:26px;font-weight:700;color:white;margin:0 0 6px">Cronkite Daily Briefing</h1>
+      <p style="font-size:13px;color:rgba(255,255,255,0.6);margin:0">{date_str} · Top UK Stories Analysed</p>
+    </div>
+    <p style="font-size:13px;color:#78716c;margin-bottom:20px;padding:0 4px">
+      Good morning. Here are today's top UK news stories, analysed for credibility, bias and persuasion techniques by Cronkite.
+    </p>
+    {articles_html}
+    <div style="text-align:center;padding:20px 0;border-top:1px solid #e8e4df;margin-top:8px">
+      <p style="font-size:11px;color:#a8a29e">Powered by <strong style="color:#c41e3a">Cronkite</strong> · Media literacy for UK schools</p>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
+async def run_daily_briefing() -> int:
+    """Fetch top UK stories, analyse each, build newsletter, send to all subscribers."""
+    import resend
+    from datetime import datetime
+
+    logger.info("=== Daily Briefing job starting ===")
+
+    stories = fetch_top_uk_stories(5)
+    logger.info(f"Fetched {len(stories)} stories")
+
+    stories_with_analysis = []
+    for story in stories:
+        try:
+            analysis = await analyse_url_internal(story['url'])
+            story['analysis'] = analysis
+            logger.info(f"Analysed: {story['title'][:60]}")
+        except Exception as e:
+            logger.warning(f"Failed to analyse {story['url']}: {e}")
+            story['analysis'] = {}
+        stories_with_analysis.append(story)
+
+    date_str = datetime.now().strftime("%A, %d %B %Y")
+    html = build_newsletter_html(stories_with_analysis, date_str)
+
+    emails = get_subscriber_emails()
+    logger.info(f"Sending Daily Briefing to {len(emails)} subscribers")
+
+    resend.api_key = os.getenv('RESEND_API_KEY', '')
+    sent = 0
+    for email in emails:
+        try:
+            resend.Emails.send({
+                "from": "Cronkite <onboarding@resend.dev>",
+                "to": [email],
+                "subject": f"Cronkite Daily Briefing — {date_str}",
+                "html": html,
+            })
+            sent += 1
+        except Exception as e:
+            logger.error(f"Failed to send briefing to {email}: {e}")
+
+    logger.info(f"Daily Briefing complete — sent to {sent}/{len(emails)} subscribers")
+    return sent
+
+
+@app.post("/api/briefing/send")
+async def api_briefing_send(user: dict = Depends(get_current_user)):
+    """Manually trigger the Daily Briefing (teacher auth required)."""
+    emails = get_subscriber_emails()
+    sent = await run_daily_briefing()
+    return {"status": "sent", "subscribers": sent}
 
 
 # ── SPA catch-all — must be the very last route ───────────────────────────────

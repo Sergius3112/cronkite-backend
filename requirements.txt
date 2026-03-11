@@ -10,6 +10,8 @@ supabase
 youtube-transcript-api
 yt-dlp
 ffmpeg-python
+feedparser
+apscheduler
 python-jose[cryptography]
 anthropic>=0.42.0
 resend
