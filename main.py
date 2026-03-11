@@ -999,12 +999,17 @@ class NotifyRequest(BaseModel):
 @app.post("/api/notify")
 async def api_notify(req: NotifyRequest):
     """Send an assignment notification email to a student via Resend."""
-    api_key = os.environ.get("RESEND_API_KEY")
+    import resend
+    import importlib.metadata
+
+    api_key = os.getenv("RESEND_API_KEY")
     logger.info(f"Resend API key present: {bool(api_key)}")
+    logger.info(f"Resend key starts with: {(api_key or '')[:8]}")
+    logger.info(f"Resend version: {importlib.metadata.version('resend')}")
+
     if not api_key:
         raise HTTPException(status_code=503, detail="RESEND_API_KEY not configured")
 
-    import resend
     resend.api_key = api_key
 
     due_line = f"<p><strong>Due:</strong> {req.due_date}</p>" if req.due_date else ""
