@@ -1109,10 +1109,13 @@ def get_subscriber_emails() -> list:
     from supabase import create_client
 
     url = os.getenv('SUPABASE_URL')
-    key = os.getenv('SUPABASE_SERVICE_KEY')
-    logger.info(f"get_subscriber_emails: URL={'set' if url else 'MISSING'}, SERVICE_KEY={'set (len=' + str(len(key)) + ')' if key else 'MISSING'}")
+    key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY')
+    logger.info(f"get_subscriber_emails: URL={'set' if url else 'MISSING'}, key_source={'SERVICE_KEY' if os.getenv('SUPABASE_SERVICE_KEY') else 'ANON_KEY (fallback)'}")
 
-    # Explicitly use service key to bypass RLS
+    if not url or not key:
+        logger.error("get_subscriber_emails: Supabase not configured, returning empty list")
+        return []
+
     service_client = create_client(url, key)
 
     emails = set()
