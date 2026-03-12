@@ -1111,7 +1111,7 @@ def get_subscriber_emails() -> list:
     emails = set()
 
     try:
-        result = supa.table('profiles').select('email').execute()
+        result = supa.table('users').select('email').execute()
         for row in result.data:
             if row.get('email'):
                 emails.add(row['email'])
