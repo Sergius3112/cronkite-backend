@@ -1061,37 +1061,134 @@ async def api_notify(req: NotifyRequest):
 
 # ── Daily Briefing newsletter agent ──────────────────────────────────────────
 
-def fetch_top_uk_stories(max_stories: int = 5) -> list:
-    import feedparser
+# ── Daily Briefing: RSS feeds by category ────────────────────────────────────
 
-    feeds = [
-        "http://feeds.bbci.co.uk/news/uk/rss.xml",
+COVERAGE_FEEDS = {
+    "Politics": [
+        "https://feeds.bbci.co.uk/news/politics/rss.xml",
+        "https://www.theguardian.com/politics/rss",
+        "https://feeds.skynews.com/feeds/rss/politics.xml",
+    ],
+    "Economics": [
+        "https://feeds.bbci.co.uk/news/business/rss.xml",
+        "https://www.theguardian.com/business/rss",
+        "https://feeds.ft.com/rss/home/uk",
+    ],
+    "Entertainment": [
+        "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml",
+        "https://www.theguardian.com/culture/rss",
+    ],
+    "National": [
+        "https://feeds.bbci.co.uk/news/uk/rss.xml",
         "https://feeds.skynews.com/feeds/rss/uk.xml",
-        "https://www.theguardian.com/uk/rss",
         "https://www.independent.co.uk/news/uk/rss",
-    ]
+    ],
+}
 
+BIAS_FEEDS = [
+    ("GB News",          "https://www.gbnews.com/feeds/rss"),
+    ("The Telegraph",    "https://www.telegraph.co.uk/rss.xml"),
+    ("MSN UK",           "https://www.msn.com/en-gb/news/rss"),
+    ("The Conservative Party", "https://www.conservatives.com/news/rss"),
+    ("Labour Party",     "https://labour.org.uk/feed/"),
+]
+
+
+def fetch_stories_from_feeds(feed_urls: list, max_per_feed: int = 3) -> list:
+    """Fetch up to max_per_feed entries from each feed URL, deduplicated by title."""
+    import feedparser
     stories = []
-    seen_titles = set()
-
-    for feed_url in feeds:
+    seen = set()
+    for feed_url in feed_urls:
         try:
             feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:3]:
-                title = entry.get('title', '')
-                url = entry.get('link', '')
-                if title and url and title not in seen_titles:
-                    seen_titles.add(title)
+            for entry in feed.entries[:max_per_feed]:
+                title = entry.get('title', '').strip()
+                url   = entry.get('link',  '').strip()
+                desc  = entry.get('summary', entry.get('description', '')).strip()
+                if title and url and title not in seen:
+                    seen.add(title)
                     stories.append({
-                        'title': title,
-                        'url': url,
-                        'source': feed.feed.get('title', 'Unknown'),
+                        'title':     title,
+                        'url':       url,
+                        'source':    feed.feed.get('title', 'Unknown'),
                         'published': entry.get('published', ''),
+                        'snippet':   desc[:300],
                     })
         except Exception as e:
             logger.warning(f"Failed to fetch feed {feed_url}: {e}")
+    return stories
 
-    return stories[:max_stories]
+
+def haiku_summarise(prompt: str) -> str:
+    """Call Claude Haiku with a plain prompt, return the text response."""
+    import anthropic as _anthropic
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return ""
+    client = _anthropic.Anthropic(api_key=api_key)
+    try:
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.content[0].text.strip()
+    except Exception as e:
+        logger.warning(f"Haiku call failed: {e}")
+        return ""
+
+
+def fetch_categorised_stories() -> dict:
+    """Return {category: [story, ...]} with 3 stories and a Haiku summary per story."""
+    result = {}
+    for category, feeds in COVERAGE_FEEDS.items():
+        stories = fetch_stories_from_feeds(feeds, max_per_feed=4)[:3]
+        for s in stories:
+            prompt = (
+                f"Summarise this news story in exactly 2 concise, neutral sentences. "
+                f"Do not editoralise. Just the facts.\n\n"
+                f"Title: {s['title']}\nSnippet: {s['snippet']}"
+            )
+            s['summary'] = haiku_summarise(prompt)
+        result[category] = stories
+        logger.info(f"Category '{category}': {len(stories)} stories fetched")
+    return result
+
+
+def fetch_bias_stories() -> list:
+    """Return up to 5 stories from bias-leaning feeds with Haiku bias analysis."""
+    candidates = []
+    for source_name, feed_url in BIAS_FEEDS:
+        stories = fetch_stories_from_feeds([feed_url], max_per_feed=3)
+        for s in stories:
+            s['source_name'] = source_name
+        candidates.extend(stories)
+
+    # Pick the 5 most sensational-sounding headlines (longest/most exclamatory)
+    candidates.sort(key=lambda s: len(s['title']), reverse=True)
+    picked = candidates[:5]
+
+    for s in picked:
+        prompt = (
+            f"In one sentence, identify the specific bias technique used in this headline. "
+            f"Then state the political direction as exactly one word: Left, Right, or Centre.\n\n"
+            f"Source: {s['source_name']}\nHeadline: {s['title']}\nSnippet: {s['snippet']}\n\n"
+            f"Format your response as:\nBias: [one sentence explanation]\nDirection: [Left/Right/Centre]"
+        )
+        raw = haiku_summarise(prompt)
+        bias_text = ""
+        direction = "Centre"
+        for line in raw.splitlines():
+            if line.startswith("Bias:"):
+                bias_text = line[5:].strip()
+            elif line.startswith("Direction:"):
+                direction = line[10:].strip().split()[0] if line[10:].strip() else "Centre"
+        s['bias_explanation'] = bias_text
+        s['bias_direction']   = direction
+
+    logger.info(f"Bias section: {len(picked)} stories analysed")
+    return picked
 
 
 def get_subscriber_emails() -> list:
@@ -1134,87 +1231,158 @@ def get_subscriber_emails() -> list:
     return list(emails)
 
 
-def build_newsletter_html(stories_with_analysis: list, date_str: str) -> str:
-    articles_html = ""
-    for story in stories_with_analysis:
-        analysis = story.get('analysis', {})
-        score = analysis.get('credibility_score', 0)
-        score_color = '#c41e3a' if score < 40 else '#d97706' if score < 70 else '#16a34a'
-        score_bg   = '#fff1f3' if score < 40 else '#fffbeb' if score < 70 else '#f0fdf4'
+def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str) -> str:
+    base_url = "https://cronkite-backend-production.up.railway.app"
 
-        persuasion = ""
-        techniques = analysis.get('persuasion_techniques', [])
-        if techniques:
-            persuasion = f"<p style='font-size:12px;color:#78716c;margin-top:8px'>⚠️ {techniques[0].get('technique', '')}</p>"
+    # ── Section 1: Cronkite Coverage ─────────────────────────────────────────
+    coverage_html = ""
+    for category, stories in categorised.items():
+        bullets = ""
+        for s in stories:
+            summary = s.get('summary') or 'Summary unavailable.'
+            bullets += f"""
+            <li style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f0ede8;">
+              <a href="{s['url']}" style="font-family:Georgia,serif;font-size:14px;font-weight:600;
+                 color:#1c1917;text-decoration:none;line-height:1.4;display:block;margin-bottom:5px">
+                {s['title']}
+              </a>
+              <span style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+                    color:#a8a29e;display:block;margin-bottom:4px">{s.get('source','')}</span>
+              <span style="font-size:12px;color:#57534e;line-height:1.5">{summary}</span>
+            </li>"""
 
-        bias = analysis.get('bias_direction', 0)
-        bias_label = (
-            "Strong left"   if bias < -60 else
-            "Left-leaning"  if bias < -20 else
-            "Centre"        if bias <  20 else
-            "Right-leaning" if bias <  60 else
-            "Strong right"
-        )
-
-        articles_html += f"""
-        <div style="border:1px solid #e8e4df;border-radius:12px;padding:20px;margin-bottom:16px;background:#ffffff;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-            <span style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#a8a29e">{story.get('source', '')}</span>
-            <span style="background:{score_bg};color:{score_color};font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">{score}%</span>
-          </div>
-          <h3 style="font-family:Georgia,serif;font-size:17px;font-weight:600;line-height:1.35;margin-bottom:8px;color:#1c1917">
-            <a href="{story.get('url', '')}" style="color:#1c1917;text-decoration:none">{story.get('title', '')}</a>
+        coverage_html += f"""
+        <div style="margin-bottom:24px">
+          <h3 style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+               color:#c41e3a;margin:0 0 12px;padding-bottom:6px;border-bottom:2px solid #c41e3a">
+            {category}
           </h3>
-          <p style="font-size:13px;color:#44403c;line-height:1.55;margin-bottom:8px">{(analysis.get('summary') or '')[:200] or 'Analysis pending.'}</p>
-          <p style="font-size:12px;color:#78716c">📊 Bias: {bias_label}</p>
-          {persuasion}
-        </div>
-        """
+          <ul style="list-style:none;padding:0;margin:0">{bullets}</ul>
+        </div>"""
+
+    # ── Section 2: Business of Bias ──────────────────────────────────────────
+    bias_html = ""
+    for i, s in enumerate(bias_stories, 1):
+        direction = s.get('bias_direction', 'Centre')
+        dir_color = '#c41e3a' if direction == 'Right' else '#1d4ed8' if direction == 'Left' else '#71717a'
+        dir_bg    = '#fff1f3' if direction == 'Right' else '#eff6ff' if direction == 'Left' else '#f4f4f5'
+        bias_html += f"""
+        <div style="display:flex;gap:12px;margin-bottom:16px;padding-bottom:16px;
+             border-bottom:1px solid #f0ede8;">
+          <span style="font-family:Georgia,serif;font-size:22px;font-weight:700;color:#e7e5e4;
+                flex-shrink:0;line-height:1">{i}</span>
+          <div style="flex:1">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:5px">
+              <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+                    background:#f5f5f4;color:#78716c;padding:2px 7px;border-radius:4px">
+                {s.get('source_name','')}
+              </span>
+              <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+                    background:{dir_bg};color:{dir_color};padding:2px 7px;border-radius:4px">
+                {direction}
+              </span>
+            </div>
+            <a href="{s['url']}" style="font-family:Georgia,serif;font-size:14px;font-weight:600;
+               color:#1c1917;text-decoration:none;line-height:1.4;display:block;margin-bottom:4px">
+              {s['title']}
+            </a>
+            <span style="font-size:12px;color:#78716c;line-height:1.5">
+              {s.get('bias_explanation','Bias analysis unavailable.')}
+            </span>
+          </div>
+        </div>"""
 
     return f"""<!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f8f7f5;font-family:-apple-system,sans-serif">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Cronkite Daily Briefing — {date_str}</title>
+</head>
+<body style="margin:0;padding:0;background:#f8f7f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
   <div style="max-width:600px;margin:0 auto;padding:24px 16px">
+
+    <!-- Header -->
     <div style="background:#1c1917;border-radius:12px;padding:28px 28px 24px;margin-bottom:20px;text-align:center">
-      <h1 style="font-family:Georgia,serif;font-size:26px;font-weight:700;color:white;margin:0 0 6px">Cronkite Daily Briefing</h1>
-      <p style="font-size:13px;color:rgba(255,255,255,0.6);margin:0">{date_str} · Top UK Stories Analysed</p>
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;
+           color:#c41e3a;margin-bottom:8px">Daily Briefing</div>
+      <h1 style="font-family:Georgia,serif;font-size:28px;font-weight:700;color:white;margin:0 0 6px;letter-spacing:-0.5px">
+        Cronkite
+      </h1>
+      <p style="font-size:13px;color:rgba(255,255,255,0.5);margin:0">{date_str}</p>
     </div>
-    <p style="font-size:13px;color:#78716c;margin-bottom:20px;padding:0 4px">
-      Good morning. Here are today's top UK news stories, analysed for credibility, bias and persuasion techniques by Cronkite.
+
+    <!-- Good morning -->
+    <p style="font-size:14px;color:#44403c;line-height:1.65;margin-bottom:24px;padding:0 2px">
+      Good morning. Here is your Cronkite Daily Briefing — a neutral summary of today's top UK
+      stories across politics, economics, entertainment and national news, plus a look at the
+      most biased and sensational headlines of the morning.
     </p>
-    {articles_html}
-    <div style="text-align:center;padding:20px 0;border-top:1px solid #e8e4df;margin-top:8px">
-      <p style="font-size:11px;color:#a8a29e">Powered by <strong style="color:#c41e3a">Cronkite</strong> · Media literacy for UK schools</p>
+
+    <!-- Section 1 -->
+    <div style="background:#ffffff;border:1px solid #e8e4df;border-radius:12px;padding:24px 24px 10px;margin-bottom:20px">
+      <h2 style="font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+           color:#c41e3a;margin:0 0 20px;padding-bottom:10px;border-bottom:2px solid #f0ede8">
+        &#9632; Cronkite Coverage
+      </h2>
+      {coverage_html}
     </div>
+
+    <!-- Section 2 -->
+    <div style="background:#ffffff;border:1px solid #e8e4df;border-radius:12px;padding:24px 24px 8px;margin-bottom:20px">
+      <h2 style="font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+           color:#1c1917;margin:0 0 6px">
+        &#9632; The Business of Bias
+      </h2>
+      <p style="font-size:12px;color:#78716c;margin:0 0 18px;line-height:1.5">
+        The five most biased or sensational headlines this morning, with AI-identified techniques.
+      </p>
+      {bias_html}
+    </div>
+
+    <!-- View full briefing -->
+    <div style="text-align:center;margin-bottom:24px">
+      <a href="{base_url}/briefing/latest"
+         style="display:inline-block;background:#c41e3a;color:white;font-size:13px;font-weight:600;
+                padding:12px 28px;border-radius:8px;text-decoration:none;letter-spacing:0.02em">
+        View Full Briefing
+      </a>
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align:center;padding:16px 0;border-top:1px solid #e8e4df">
+      <p style="font-size:11px;color:#a8a29e;margin:0">
+        Powered by <strong style="color:#c41e3a">Cronkite</strong> &middot; Media literacy for UK schools
+      </p>
+    </div>
+
   </div>
 </body>
 </html>"""
 
 
+# ── Latest briefing stored in memory ─────────────────────────────────────────
+_latest_briefing_html: str = ""
+_latest_briefing_date: str = ""
+
+
 async def run_daily_briefing() -> int:
-    """Fetch top UK stories, analyse each, build newsletter, send to all subscribers."""
+    """Fetch categorised stories + bias stories, build newsletter, send to subscribers."""
+    global _latest_briefing_html, _latest_briefing_date
     import resend
     from datetime import datetime
 
     logger.info("=== Daily Briefing job starting ===")
 
-    stories = fetch_top_uk_stories(5)
-    logger.info(f"Fetched {len(stories)} stories")
-
-    stories_with_analysis = []
-    for story in stories:
-        try:
-            analysis = await analyse_url_internal(story['url'])
-            story['analysis'] = analysis
-            logger.info(f"Analysed: {story['title'][:60]}")
-        except Exception as e:
-            logger.warning(f"Failed to analyse {story['url']}: {e}")
-            story['analysis'] = {}
-        stories_with_analysis.append(story)
+    categorised  = fetch_categorised_stories()
+    bias_stories = fetch_bias_stories()
 
     date_str = datetime.now().strftime("%A, %d %B %Y")
-    html = build_newsletter_html(stories_with_analysis, date_str)
+    html = build_newsletter_html(categorised, bias_stories, date_str)
+
+    _latest_briefing_html = html
+    _latest_briefing_date = date_str
+    logger.info("Latest briefing stored in memory")
 
     emails = get_subscriber_emails()
     logger.info(f"Sending Daily Briefing to {len(emails)} subscribers")
@@ -1235,6 +1403,29 @@ async def run_daily_briefing() -> int:
 
     logger.info(f"Daily Briefing complete — sent to {sent}/{len(emails)} subscribers")
     return sent
+
+
+@app.get("/briefing/latest")
+async def briefing_latest():
+    """Serve the latest Daily Briefing as a full-page scrollable HTML document."""
+    from fastapi.responses import HTMLResponse
+    if not _latest_briefing_html:
+        return HTMLResponse(content="""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Cronkite Briefing</title></head>
+<body style="font-family:Georgia,serif;text-align:center;padding:80px 20px;color:#44403c">
+  <h1 style="font-size:24px;color:#1c1917">No briefing available yet</h1>
+  <p>The Daily Briefing runs at 08:30 UK time. Check back then, or trigger it manually.</p>
+</body></html>""", status_code=200)
+
+    # Wrap in a print-friendly full-page shell
+    page_html = _latest_briefing_html.replace(
+        "<body style=\"margin:0;padding:0;background:#f8f7f5;",
+        "<body style=\"margin:0;padding:0;background:#f8f7f5;min-height:100vh;"
+    ).replace(
+        "max-width:600px;margin:0 auto;padding:24px 16px",
+        "max-width:680px;margin:0 auto;padding:40px 24px"
+    )
+    return HTMLResponse(content=page_html)
 
 
 @app.post("/api/briefing/send")
