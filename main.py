@@ -1085,13 +1085,34 @@ COVERAGE_FEEDS = {
     ],
 }
 
-BIAS_FEEDS = [
-    ("GB News",          "https://www.gbnews.com/feeds/rss"),
-    ("The Telegraph",    "https://www.telegraph.co.uk/rss.xml"),
-    ("MSN UK",           "https://www.msn.com/en-gb/news/rss"),
-    ("The Conservative Party", "https://www.conservatives.com/news/rss"),
-    ("Labour Party",     "https://labour.org.uk/feed/"),
-]
+# Bias feeds grouped by political lean — one slot per category in the final section
+BIAS_FEED_GROUPS = {
+    "right": [
+        ("GB News",       "https://www.gbnews.com/feeds/rss"),
+        ("The Telegraph", "https://www.telegraph.co.uk/rss.xml"),
+        ("Daily Mail",    "https://www.dailymail.co.uk/news/index.rss"),
+    ],
+    "left": [
+        ("The Guardian Opinion", "https://www.theguardian.com/commentisfree/rss"),
+        ("The Mirror",           "https://www.mirror.co.uk/news/?service=rss"),
+        ("The Independent",      "https://www.independent.co.uk/news/uk/rss"),
+    ],
+    "party": [
+        ("The Conservative Party", "https://www.conservatives.com/news/rss"),
+        ("Labour Party",           "https://labour.org.uk/feed/"),
+        ("Liberal Democrats",      "https://www.libdems.org.uk/feed"),
+    ],
+    "aggregator": [
+        ("MSN UK",    "https://www.msn.com/en-gb/news/rss"),
+        ("Yahoo News", "https://uk.news.yahoo.com/rss/"),
+        ("Flipboard UK", "https://flipboard.com/@flipboard/flipboard-picks-9un5u2ggz.rss"),
+    ],
+    "politician": [
+        ("UK Parliament",    "https://www.parliament.uk/rss/"),
+        ("GOV.UK News",      "https://www.gov.uk/search/news-and-communications.atom"),
+        ("Labour List",      "https://labourlist.org/feed/"),
+    ],
+}
 
 
 def fetch_stories_from_feeds(feed_urls: list, max_per_feed: int = 3) -> list:
@@ -1140,43 +1161,94 @@ def haiku_summarise(prompt: str) -> str:
 
 
 def fetch_categorised_stories() -> dict:
-    """Return {category: [story, ...]} with 3 stories and a Haiku summary per story."""
+    """Return {category: [story, ...]} where Haiku writes its own headline and summary.
+    Sources are used as raw material only — Cronkite is the author, not cited."""
     result = {}
     for category, feeds in COVERAGE_FEEDS.items():
-        stories = fetch_stories_from_feeds(feeds, max_per_feed=4)[:3]
-        for s in stories:
-            prompt = (
-                f"Summarise this news story in exactly 2 concise, neutral sentences. "
-                f"Do not editoralise. Just the facts.\n\n"
-                f"Title: {s['title']}\nSnippet: {s['snippet']}"
+        raw_stories = fetch_stories_from_feeds(feeds, max_per_feed=4)
+        # Group raw stories into clusters of ~3 to synthesise 1 Cronkite story per cluster
+        clusters = [raw_stories[i:i+3] for i in range(0, min(len(raw_stories), 9), 3)]
+        synthesised = []
+        for cluster in clusters[:3]:
+            raw_text = "\n\n".join(
+                f"- {s['title']}: {s['snippet']}" for s in cluster if s.get('snippet') or s.get('title')
             )
-            s['summary'] = haiku_summarise(prompt)
-        result[category] = stories
-        logger.info(f"Category '{category}': {len(stories)} stories fetched")
+            prompt = (
+                "You are Cronkite, a neutral UK news service for schools. "
+                "Using the raw news items below as source material, write:\n"
+                "1. A clear, neutral headline (max 12 words, no source names)\n"
+                "2. A 2-sentence neutral summary of what happened\n\n"
+                "Do not mention BBC, Guardian, Sky, or any source by name. "
+                "Write as if Cronkite independently reported this.\n\n"
+                f"Raw material:\n{raw_text}\n\n"
+                "Format exactly as:\nHeadline: [your headline]\nSummary: [your 2-sentence summary]"
+            )
+            raw = haiku_summarise(prompt)
+            headline = ""
+            summary = ""
+            for line in raw.splitlines():
+                if line.startswith("Headline:"):
+                    headline = line[9:].strip()
+                elif line.startswith("Summary:"):
+                    summary = line[8:].strip()
+            if headline:
+                synthesised.append({
+                    'title':   headline,
+                    'url':     cluster[0]['url'],   # link to first source article
+                    'summary': summary,
+                })
+        result[category] = synthesised
+        logger.info(f"Category '{category}': {len(synthesised)} synthesised stories")
     return result
 
 
 def fetch_bias_stories() -> list:
-    """Return up to 5 stories from bias-leaning feeds with Haiku bias analysis."""
-    candidates = []
-    for source_name, feed_url in BIAS_FEEDS:
-        stories = fetch_stories_from_feeds([feed_url], max_per_feed=3)
-        for s in stories:
-            s['source_name'] = source_name
-        candidates.extend(stories)
+    """Pick the single most biased story from each lean group (right/left/party/aggregator/politician).
+    Never more than 1 story per source. Returns exactly 5 stories spanning the full spectrum."""
 
-    # Pick the 5 most sensational-sounding headlines (longest/most exclamatory)
-    candidates.sort(key=lambda s: len(s['title']), reverse=True)
-    picked = candidates[:5]
+    group_order = ["right", "left", "party", "aggregator", "politician"]
+    picked = []
 
-    for s in picked:
-        prompt = (
+    for group_key in group_order:
+        feeds = BIAS_FEED_GROUPS.get(group_key, [])
+        # Collect candidates from all feeds in this group
+        group_candidates = []
+        for source_name, feed_url in feeds:
+            stories = fetch_stories_from_feeds([feed_url], max_per_feed=4)
+            for s in stories:
+                s['source_name'] = source_name
+                s['lean_group']  = group_key
+            group_candidates.extend(stories)
+
+        if not group_candidates:
+            logger.warning(f"Bias group '{group_key}': no stories fetched")
+            continue
+
+        # Ask Haiku to pick the single most biased/sensational headline from this group
+        candidates_text = "\n".join(
+            f"{i+1}. [{s['source_name']}] {s['title']}"
+            for i, s in enumerate(group_candidates[:10])
+        )
+        pick_prompt = (
+            f"From these headlines, pick the single most biased, sensational, or politically "
+            f"loaded one. Reply with ONLY the number (e.g. '3').\n\n{candidates_text}"
+        )
+        pick_raw = haiku_summarise(pick_prompt).strip()
+        try:
+            idx = int(pick_raw.split()[0]) - 1
+            idx = max(0, min(idx, len(group_candidates) - 1))
+        except (ValueError, IndexError):
+            idx = 0
+        best = group_candidates[idx]
+
+        # Now analyse the chosen story
+        bias_prompt = (
             f"In one sentence, identify the specific bias technique used in this headline. "
             f"Then state the political direction as exactly one word: Left, Right, or Centre.\n\n"
-            f"Source: {s['source_name']}\nHeadline: {s['title']}\nSnippet: {s['snippet']}\n\n"
-            f"Format your response as:\nBias: [one sentence explanation]\nDirection: [Left/Right/Centre]"
+            f"Source: {best['source_name']}\nHeadline: {best['title']}\nSnippet: {best.get('snippet','')}\n\n"
+            f"Format exactly as:\nBias: [one sentence]\nDirection: [Left/Right/Centre]"
         )
-        raw = haiku_summarise(prompt)
+        raw = haiku_summarise(bias_prompt)
         bias_text = ""
         direction = "Centre"
         for line in raw.splitlines():
@@ -1184,8 +1256,10 @@ def fetch_bias_stories() -> list:
                 bias_text = line[5:].strip()
             elif line.startswith("Direction:"):
                 direction = line[10:].strip().split()[0] if line[10:].strip() else "Centre"
-        s['bias_explanation'] = bias_text
-        s['bias_direction']   = direction
+        best['bias_explanation'] = bias_text
+        best['bias_direction']   = direction
+        picked.append(best)
+        logger.info(f"Bias group '{group_key}': picked '{best['title'][:60]}' from {best['source_name']}")
 
     logger.info(f"Bias section: {len(picked)} stories analysed")
     return picked
@@ -1246,8 +1320,6 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str) 
                  color:#1c1917;text-decoration:none;line-height:1.4;display:block;margin-bottom:5px">
                 {s['title']}
               </a>
-              <span style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
-                    color:#a8a29e;display:block;margin-bottom:4px">{s.get('source','')}</span>
               <span style="font-size:12px;color:#57534e;line-height:1.5">{summary}</span>
             </li>"""
 
