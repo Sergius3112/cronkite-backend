@@ -20,23 +20,12 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 @app.on_event("startup")
 async def startup_check():
-    checks = {
-        "SUPABASE_URL":        os.environ.get("SUPABASE_URL"),
-        "SUPABASE_SERVICE_KEY": os.environ.get("SUPABASE_SERVICE_KEY"),
-        "SUPABASE_ANON_KEY":   os.environ.get("SUPABASE_ANON_KEY"),
-        "ANTHROPIC_API_KEY":   os.environ.get("ANTHROPIC_API_KEY"),
-        "GROQ_API_KEY":        os.environ.get("GROQ_API_KEY"),
-        "TAVILY_API_KEY":      os.environ.get("TAVILY_API_KEY"),
-    }
     logger.info("=== Cronkite startup credential check ===")
-    for name, val in checks.items():
-        logger.info(f"  {'[OK]' if val else '[MISSING]'} {name}")
-    if not checks["SUPABASE_URL"]:
-        logger.warning("SUPABASE_URL not set — all Supabase calls will fail")
-    if not checks["SUPABASE_SERVICE_KEY"] and not checks["SUPABASE_ANON_KEY"]:
-        logger.warning("Neither SUPABASE_SERVICE_KEY nor SUPABASE_ANON_KEY set — Supabase will fail")
-    if not checks["ANTHROPIC_API_KEY"]:
-        logger.warning("ANTHROPIC_API_KEY not set — /api/analyse will return 503")
+    for key in ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "SUPABASE_ANON_KEY",
+                "ANTHROPIC_API_KEY", "GROQ_API_KEY", "TAVILY_API_KEY"]:
+        val = os.getenv(key)
+        status = "[OK]" if val else "[MISSING]"
+        logger.info(f"  {status} {key}")
     logger.info("===========================================")
 
     # Start the daily briefing scheduler
@@ -1110,7 +1099,8 @@ def get_subscriber_emails() -> list:
 
     url = os.getenv('SUPABASE_URL')
     key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY')
-    logger.info(f"get_subscriber_emails: URL={'set' if url else 'MISSING'}, key_source={'SERVICE_KEY' if os.getenv('SUPABASE_SERVICE_KEY') else 'ANON_KEY (fallback)'}")
+    logger.info(f"Service key available: {bool(os.getenv('SUPABASE_SERVICE_KEY'))}")
+    logger.info(f"Service key first 8 chars: {os.getenv('SUPABASE_SERVICE_KEY', '')[:8]}")
 
     if not url or not key:
         logger.error("get_subscriber_emails: Supabase not configured, returning empty list")
