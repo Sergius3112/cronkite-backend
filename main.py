@@ -1141,7 +1141,7 @@ def fetch_stories_from_feeds(feed_urls: list, max_per_feed: int = 3) -> list:
     return stories
 
 
-def haiku_summarise(prompt: str) -> str:
+def haiku_summarise(prompt: str, max_tokens: int = 300) -> str:
     """Call Claude Haiku with a plain prompt, return the text response."""
     import anthropic as _anthropic
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -1151,7 +1151,7 @@ def haiku_summarise(prompt: str) -> str:
     try:
         resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=300,
+            max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text.strip()
@@ -1243,19 +1243,29 @@ def fetch_bias_stories() -> list:
 
         # Now analyse the chosen story
         bias_prompt = (
-            f"In one sentence, identify the specific bias technique used in this headline. "
-            f"Then state the political direction as exactly one word: Left, Right, or Centre.\n\n"
+            f"You are a media bias analyst. You must give a definitive bias rating — "
+            f"never default to Centre unless the content is genuinely neutral.\n\n"
+            f"Look for these signals:\n"
+            f"RIGHT-LEANING: anti-immigration language, pro-business framing, criticism of Labour/SNP/Greens, "
+            f"support for Brexit, law and order emphasis, climate scepticism, culture war framing.\n"
+            f"LEFT-LEANING: anti-Conservative language, pro-union framing, criticism of Tories/Reform/UKIP, "
+            f"pro-NHS spending, inequality emphasis, pro-immigration framing, anti-austerity language.\n\n"
+            f"Rate using: Strong Right, Right, Centre-Right, Centre, Centre-Left, Left, Strong Left.\n"
+            f"Only score Centre if content has genuinely equal representation with no loaded language.\n"
+            f"We are selecting the most biased content — expect most entries to be Left or Right.\n\n"
             f"Source: {best['source_name']}\nHeadline: {best['title']}\nSnippet: {best.get('snippet','')}\n\n"
-            f"Format exactly as:\nBias: [one sentence]\nDirection: [Left/Right/Centre]"
+            f"Think step by step, then format your final answer exactly as:\n"
+            f"Bias: [one sentence identifying the specific technique]\n"
+            f"Direction: [Strong Right/Right/Centre-Right/Centre/Centre-Left/Left/Strong Left]"
         )
-        raw = haiku_summarise(bias_prompt)
+        raw = haiku_summarise(bias_prompt, max_tokens=500)
         bias_text = ""
         direction = "Centre"
         for line in raw.splitlines():
             if line.startswith("Bias:"):
                 bias_text = line[5:].strip()
             elif line.startswith("Direction:"):
-                direction = line[10:].strip().split()[0] if line[10:].strip() else "Centre"
+                direction = line[10:].strip() if line[10:].strip() else "Centre"
         best['bias_explanation'] = bias_text
         best['bias_direction']   = direction
         picked.append(best)
@@ -1336,8 +1346,11 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str) 
     bias_html = ""
     for i, s in enumerate(bias_stories, 1):
         direction = s.get('bias_direction', 'Centre')
-        dir_color = '#c41e3a' if direction == 'Right' else '#1d4ed8' if direction == 'Left' else '#71717a'
-        dir_bg    = '#fff1f3' if direction == 'Right' else '#eff6ff' if direction == 'Left' else '#f4f4f5'
+        d_lower = direction.lower()
+        is_right = 'right' in d_lower
+        is_left  = 'left'  in d_lower
+        dir_color = '#c41e3a' if is_right else '#1d4ed8' if is_left else '#71717a'
+        dir_bg    = '#fff1f3' if is_right else '#eff6ff' if is_left else '#f4f4f5'
         bias_html += f"""
         <div style="display:flex;gap:12px;margin-bottom:16px;padding-bottom:16px;
              border-bottom:1px solid #f0ede8;">
