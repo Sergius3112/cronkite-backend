@@ -1203,76 +1203,82 @@ def fetch_categorised_stories() -> dict:
 
 
 def fetch_bias_stories() -> list:
-    """Pick the single most biased story from each lean group (right/left/party/aggregator/politician).
-    Never more than 1 story per source. Returns exactly 5 stories spanning the full spectrum."""
+    """Actively hunt for biased UK content using Haiku + web_search. Returns up to 5 stories."""
+    import anthropic as _anthropic
+    from datetime import datetime
 
-    group_order = ["right", "left", "party", "aggregator", "politician"]
-    picked = []
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        logger.warning("fetch_bias_stories: no ANTHROPIC_API_KEY")
+        return []
 
-    for group_key in group_order:
-        feeds = BIAS_FEED_GROUPS.get(group_key, [])
-        # Collect candidates from all feeds in this group
-        group_candidates = []
-        for source_name, feed_url in feeds:
-            stories = fetch_stories_from_feeds([feed_url], max_per_feed=4)
-            for s in stories:
-                s['source_name'] = source_name
-                s['lean_group']  = group_key
-            group_candidates.extend(stories)
+    date_str = datetime.now().strftime("%A %d %B %Y")
 
-        if not group_candidates:
-            logger.warning(f"Bias group '{group_key}': no stories fetched")
-            continue
+    prompt = (
+        f"It is {date_str}. Search for the most biased, sensational or politically charged "
+        f"UK news headlines, tweets and political statements published TODAY.\n\n"
+        f"Search these specific sources:\n"
+        f"1. Search: 'GB News headline today'\n"
+        f"2. Search: 'Nigel Farage tweet today' OR 'Reform UK statement today'\n"
+        f"3. Search: 'Labour Party statement today' OR 'Keir Starmer tweet today'\n"
+        f"4. Search: 'Telegraph opinion today' OR 'Daily Mail headline today'\n"
+        f"5. Search: 'Conservative Party statement today'\n\n"
+        f"For each search, find the single most biased or inflammatory piece of content published today. "
+        f"Use the bias signals below to rate each one:\n"
+        f"RIGHT-LEANING: anti-immigration language, pro-business framing, criticism of Labour/SNP/Greens, "
+        f"support for Brexit, law and order emphasis, climate scepticism, culture war framing.\n"
+        f"LEFT-LEANING: anti-Conservative language, pro-union framing, criticism of Tories/Reform/UKIP, "
+        f"pro-NHS spending, inequality emphasis, pro-immigration framing, anti-austerity language.\n\n"
+        f"Return ONLY a valid JSON array of exactly 5 objects. No markdown, no explanation outside the JSON.\n"
+        f"Each object must have these exact keys:\n"
+        f"  headline, source, bias_direction, bias_intensity, technique, explanation\n\n"
+        f"bias_direction must be one of: Strong Right, Right, Centre-Right, Centre, Centre-Left, Left, Strong Left\n"
+        f"bias_intensity is 1-10\n"
+        f"technique must be one of: Loaded Language, Fear Mongering, Scapegoating, False Balance, "
+        f"Cherry Picking, Ad Hominem, Whataboutism\n"
+        f"explanation is one sentence\n\n"
+        f"Only score Centre if content has genuinely equal representation with no loaded language. "
+        f"Most entries should be Left or Right."
+    )
 
-        # Ask Haiku to pick the single most biased/sensational headline from this group
-        candidates_text = "\n".join(
-            f"{i+1}. [{s['source_name']}] {s['title']}"
-            for i, s in enumerate(group_candidates[:10])
+    client = _anthropic.Anthropic(api_key=api_key)
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=2000,
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+            messages=[{"role": "user", "content": prompt}],
         )
-        pick_prompt = (
-            f"From these headlines, pick the single most biased, sensational, or politically "
-            f"loaded one. Reply with ONLY the number (e.g. '3').\n\n{candidates_text}"
-        )
-        pick_raw = haiku_summarise(pick_prompt).strip()
-        try:
-            idx = int(pick_raw.split()[0]) - 1
-            idx = max(0, min(idx, len(group_candidates) - 1))
-        except (ValueError, IndexError):
-            idx = 0
-        best = group_candidates[idx]
+    except Exception as e:
+        logger.error(f"fetch_bias_stories API call failed: {e}")
+        return []
 
-        # Now analyse the chosen story
-        bias_prompt = (
-            f"You are a media bias analyst. You must give a definitive bias rating — "
-            f"never default to Centre unless the content is genuinely neutral.\n\n"
-            f"Look for these signals:\n"
-            f"RIGHT-LEANING: anti-immigration language, pro-business framing, criticism of Labour/SNP/Greens, "
-            f"support for Brexit, law and order emphasis, climate scepticism, culture war framing.\n"
-            f"LEFT-LEANING: anti-Conservative language, pro-union framing, criticism of Tories/Reform/UKIP, "
-            f"pro-NHS spending, inequality emphasis, pro-immigration framing, anti-austerity language.\n\n"
-            f"Rate using: Strong Right, Right, Centre-Right, Centre, Centre-Left, Left, Strong Left.\n"
-            f"Only score Centre if content has genuinely equal representation with no loaded language.\n"
-            f"We are selecting the most biased content — expect most entries to be Left or Right.\n\n"
-            f"Source: {best['source_name']}\nHeadline: {best['title']}\nSnippet: {best.get('snippet','')}\n\n"
-            f"Think step by step, then format your final answer exactly as:\n"
-            f"Bias: [one sentence identifying the specific technique]\n"
-            f"Direction: [Strong Right/Right/Centre-Right/Centre/Centre-Left/Left/Strong Left]"
-        )
-        raw = haiku_summarise(bias_prompt, max_tokens=500)
-        bias_text = ""
-        direction = "Centre"
-        for line in raw.splitlines():
-            if line.startswith("Bias:"):
-                bias_text = line[5:].strip()
-            elif line.startswith("Direction:"):
-                direction = line[10:].strip() if line[10:].strip() else "Centre"
-        best['bias_explanation'] = bias_text
-        best['bias_direction']   = direction
-        picked.append(best)
-        logger.info(f"Bias group '{group_key}': picked '{best['title'][:60]}' from {best['source_name']}")
+    # Extract text blocks from response
+    text = "".join(block.text for block in response.content if hasattr(block, 'text') and block.text)
 
-    logger.info(f"Bias section: {len(picked)} stories analysed")
-    return picked
+    # Parse JSON from response
+    stories = []
+    try:
+        start = text.find("[")
+        end   = text.rfind("]") + 1
+        if start >= 0 and end > start:
+            raw_items = json.loads(text[start:end])
+            for item in raw_items[:5]:
+                stories.append({
+                    'title':           item.get('headline', ''),
+                    'source_name':     item.get('source', ''),
+                    'url':             '',
+                    'bias_direction':  item.get('bias_direction', 'Centre'),
+                    'bias_intensity':  item.get('bias_intensity', 5),
+                    'technique':       item.get('technique', ''),
+                    'bias_explanation': item.get('explanation', ''),
+                    'snippet':         '',
+                })
+    except Exception as e:
+        logger.error(f"fetch_bias_stories JSON parse failed: {e}\nRaw text: {text[:500]}")
+
+    logger.info(f"Bias section: {len(stories)} stories found via web search")
+    return stories
 
 
 def get_subscriber_emails() -> list:
@@ -1366,6 +1372,7 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str) 
                     background:{dir_bg};color:{dir_color};padding:2px 7px;border-radius:4px">
                 {direction}
               </span>
+              {f'<span style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#fafaf9;color:#a8a29e;padding:2px 7px;border-radius:4px">{s["technique"]}</span>' if s.get('technique') else ''}
             </div>
             <a href="{s['url']}" style="font-family:Georgia,serif;font-size:14px;font-weight:600;
                color:#1c1917;text-decoration:none;line-height:1.4;display:block;margin-bottom:4px">
