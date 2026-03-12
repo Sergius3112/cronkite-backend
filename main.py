@@ -1106,26 +1106,37 @@ def fetch_top_uk_stories(max_stories: int = 5) -> list:
 
 
 def get_subscriber_emails() -> list:
-    supa = get_supabase()
+    from supabase import create_client
+
+    # Explicitly use service key to bypass RLS
+    service_client = create_client(
+        os.getenv('SUPABASE_URL'),
+        os.getenv('SUPABASE_SERVICE_KEY')
+    )
 
     emails = set()
 
+    # Query users table
     try:
-        result = supa.table('users').select('email').execute()
+        result = service_client.table('users').select('email').execute()
+        logger.info(f"Users query returned {len(result.data)} rows: {result.data}")
         for row in result.data:
             if row.get('email'):
                 emails.add(row['email'])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Users table query failed: {e}")
 
+    # Query assignments table for student emails
     try:
-        result = supa.table('assignments').select('student_email').execute()
+        result = service_client.table('assignments').select('student_email').execute()
+        logger.info(f"Assignments query returned {len(result.data)} rows")
         for row in result.data:
             if row.get('student_email'):
                 emails.add(row['student_email'])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Assignments query failed: {e}")
 
+    logger.info(f"Total subscribers found: {len(emails)} — {list(emails)}")
     return list(emails)
 
 
