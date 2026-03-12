@@ -1108,11 +1108,12 @@ def fetch_top_uk_stories(max_stories: int = 5) -> list:
 def get_subscriber_emails() -> list:
     from supabase import create_client
 
+    url = os.getenv('SUPABASE_URL')
+    key = os.getenv('SUPABASE_SERVICE_KEY')
+    logger.info(f"get_subscriber_emails: URL={'set' if url else 'MISSING'}, SERVICE_KEY={'set (len=' + str(len(key)) + ')' if key else 'MISSING'}")
+
     # Explicitly use service key to bypass RLS
-    service_client = create_client(
-        os.getenv('SUPABASE_URL'),
-        os.getenv('SUPABASE_SERVICE_KEY')
-    )
+    service_client = create_client(url, key)
 
     emails = set()
 
