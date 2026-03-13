@@ -1244,7 +1244,7 @@ def fetch_bias_stories() -> list:
     client = _anthropic.Anthropic(api_key=api_key)
     try:
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-6",
             max_tokens=2000,
             tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
             messages=[{"role": "user", "content": prompt}],
@@ -1253,8 +1253,18 @@ def fetch_bias_stories() -> list:
         logger.error(f"fetch_bias_stories API call failed: {e}")
         return []
 
-    # Extract text blocks from response
-    text = "".join(block.text for block in response.content if hasattr(block, 'text') and block.text)
+    logger.info(f"[BIAS] Response blocks: {[block.type for block in response.content]}")
+
+    # Extract text from all block types
+    text = ""
+    for block in response.content:
+        if block.type == "text":
+            text += block.text
+        elif block.type == "tool_result":
+            if isinstance(block.content, list):
+                for item in block.content:
+                    if hasattr(item, 'text'):
+                        text += item.text
 
     # Parse JSON from response
     stories = []
