@@ -840,7 +840,9 @@ Analyse this video content as a media literacy expert. Pay special attention to:
             except Exception as yt_err:
                 logger.warning(f"YouTube transcript failed for {video_id}: {yt_err}")
 
-    prompt = f"""You are a world-class media literacy analyst combining the critical intelligence \
+    prompt = f"""IMPORTANT: You must respond with ONLY a JSON object. No preamble, no explanation, no markdown. Start your response with {{ and end with }}.
+
+You are a world-class media literacy analyst combining the critical intelligence \
 of an English Literature and Language scholar, the forensic rigour of an \
 investigative journalist, and the contextual awareness of a political historian.
 
@@ -928,7 +930,9 @@ Return ONLY valid JSON with this exact structure:
   "reading_level": "accessible|moderate|challenging",
 
   "report_summary": "A 5-7 sentence executive summary written with the authority of a language and literature scholar — covering the content's goal, its primary techniques, the credibility of its source and creator, and what a critical reader should take away. Suitable for a teacher to read before assigning this to students, or for an individual to read as part of their media diet audit."
-}}"""
+}}
+
+IMPORTANT: Your entire response must be ONLY the JSON object above. No preamble, no explanation, no markdown fences. Start with {{ and end with }}."""
 
     client = _anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
@@ -938,13 +942,13 @@ Return ONLY valid JSON with this exact structure:
         messages=[{"role": "user", "content": prompt}],
     )
 
+    import re
     text = "".join(block.text for block in response.content if block.type == "text")
-    start = text.find("{")
-    end = text.rfind("}") + 1
-    if start == -1 or end <= start:
+    json_match = re.search(r'\{.*\}', text, re.DOTALL)
+    if not json_match:
         raise ValueError(f"No valid JSON in response. Got: {text[:500]}")
 
-    data = json.loads(text[start:end])
+    data = json.loads(json_match.group())
     data["overall_credibility_score"] = data.get("credibility_score", 50)
     return data
 
