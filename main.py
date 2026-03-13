@@ -1356,6 +1356,8 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str) 
         is_right = 'right' in d_lower
         is_left  = 'left'  in d_lower
         dir_color = '#c41e3a' if is_right else '#1d4ed8' if is_left else '#71717a'
+        technique = s.get('technique', '')
+        technique_html = f'<span style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#fafaf9;color:#a8a29e;padding:2px 7px;border-radius:4px">{technique}</span>' if technique else ""
         dir_bg    = '#fff1f3' if is_right else '#eff6ff' if is_left else '#f4f4f5'
         bias_html += f"""
         <div style="display:flex;gap:12px;margin-bottom:16px;padding-bottom:16px;
@@ -1372,7 +1374,7 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str) 
                     background:{dir_bg};color:{dir_color};padding:2px 7px;border-radius:4px">
                 {direction}
               </span>
-              {f'<span style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#fafaf9;color:#a8a29e;padding:2px 7px;border-radius:4px">{s["technique"]}</span>' if s.get('technique') else ''}
+              {technique_html}
             </div>
             <a href="{s['url']}" style="font-family:Georgia,serif;font-size:14px;font-weight:600;
                color:#1c1917;text-decoration:none;line-height:1.4;display:block;margin-bottom:4px">
