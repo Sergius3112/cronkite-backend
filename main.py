@@ -1068,24 +1068,32 @@ async def api_notify(req: NotifyRequest):
 # ── Daily Briefing: RSS feeds by category ────────────────────────────────────
 
 COVERAGE_FEEDS = {
-    "Politics": [
+    "International Conflicts and Wars": [
+        "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "https://www.theguardian.com/world/rss",
+        "https://feeds.skynews.com/feeds/rss/world.xml",
+        "https://www.independent.co.uk/news/world/rss",
+    ],
+    "Domestic Politics and Elections": [
         "https://feeds.bbci.co.uk/news/politics/rss.xml",
         "https://www.theguardian.com/politics/rss",
         "https://feeds.skynews.com/feeds/rss/politics.xml",
     ],
-    "Economics": [
+    "Business and Economics": [
         "https://feeds.bbci.co.uk/news/business/rss.xml",
         "https://www.theguardian.com/business/rss",
         "https://feeds.ft.com/rss/home/uk",
     ],
-    "Entertainment": [
-        "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml",
+    "Social and Cultural Issues": [
+        "https://feeds.bbci.co.uk/news/uk/rss.xml",
+        "https://www.theguardian.com/society/rss",
+        "https://www.independent.co.uk/news/uk/rss",
         "https://www.theguardian.com/culture/rss",
     ],
-    "National": [
-        "https://feeds.bbci.co.uk/news/uk/rss.xml",
-        "https://feeds.skynews.com/feeds/rss/uk.xml",
-        "https://www.independent.co.uk/news/uk/rss",
+    "Technology, AI, and Social Media": [
+        "https://feeds.bbci.co.uk/news/technology/rss.xml",
+        "https://www.theguardian.com/technology/rss",
+        "https://www.wired.com/feed/rss",
     ],
 }
 
@@ -1166,24 +1174,46 @@ def haiku_summarise(prompt: str, max_tokens: int = 300) -> str:
 
 def fetch_categorised_stories() -> dict:
     """Return {category: [story, ...]} where Haiku writes its own headline and summary.
-    Sources are used as raw material only — Cronkite is the author, not cited."""
+    Sources are used as raw material only — Cronkite is the author, not cited.
+    Maintains seen_urls and seen_topics across all categories to prevent repeats."""
     result = {}
+    seen_urls:   set = set()
+    seen_topics: set = set()
+
     for category, feeds in COVERAGE_FEEDS.items():
-        raw_stories = fetch_stories_from_feeds(feeds, max_per_feed=4)
-        # Group raw stories into clusters of ~3 to synthesise 1 Cronkite story per cluster
-        clusters = [raw_stories[i:i+3] for i in range(0, min(len(raw_stories), 9), 3)]
+        raw_stories = fetch_stories_from_feeds(feeds, max_per_feed=5)
+
+        # Deduplicate raw stories against global seen sets before clustering
+        filtered = []
+        for s in raw_stories:
+            url   = s.get('url', '')
+            topic = s.get('title', '').lower()[:60]   # first 60 chars as topic fingerprint
+            if url and url in seen_urls:
+                continue
+            if topic and topic in seen_topics:
+                continue
+            filtered.append(s)
+
+        # Group filtered stories into clusters of ~3 to synthesise 1 Cronkite story per cluster
+        clusters = [filtered[i:i+3] for i in range(0, min(len(filtered), 9), 3)]
         synthesised = []
         for cluster in clusters[:3]:
             raw_text = "\n\n".join(
                 f"- {s['title']}: {s['snippet']}" for s in cluster if s.get('snippet') or s.get('title')
             )
             prompt = (
-                "You are Cronkite, a neutral UK news service for schools. "
-                "Using the raw news items below as source material, write:\n"
-                "1. A clear, neutral headline (max 12 words, no source names)\n"
-                "2. A 2-sentence neutral summary of what happened\n\n"
-                "Do not mention BBC, Guardian, Sky, or any source by name. "
-                "Write as if Cronkite independently reported this.\n\n"
+                "You are a wire journalist at Cronkite, a neutral UK news service for schools. "
+                "Using the raw news items below as source material, write an original news story.\n\n"
+                "Rules:\n"
+                "- Write a precise headline (max 12 words) naming the specific people, organisations "
+                "and places involved. Never use generalisations.\n"
+                "  BAD: 'Former Labour politician named in scandal'\n"
+                "  GOOD: 'Former Labour Health Secretary Andy Burnham named in leaked document "
+                "linking him to property developer donations'\n"
+                "- Write a 2-sentence summary that names every person, organisation and place "
+                "specifically. No vague references.\n"
+                "- Do not mention BBC, Guardian, Sky, FT, or any outlet by name.\n"
+                "- Write as Cronkite's own journalism, not a summary of sources.\n\n"
                 f"Raw material:\n{raw_text}\n\n"
                 "Format exactly as:\nHeadline: [your headline]\nSummary: [your 2-sentence summary]"
             )
@@ -1198,9 +1228,16 @@ def fetch_categorised_stories() -> dict:
             if headline:
                 synthesised.append({
                     'title':   headline,
-                    'url':     cluster[0]['url'],   # link to first source article
+                    'url':     cluster[0]['url'],
                     'summary': summary,
                 })
+                # Mark all source URLs and topic fingerprints as seen
+                for s in cluster:
+                    if s.get('url'):
+                        seen_urls.add(s['url'])
+                    t = s.get('title', '').lower()[:60]
+                    if t:
+                        seen_topics.add(t)
         result[category] = synthesised
         logger.info(f"Category '{category}': {len(synthesised)} synthesised stories")
     return result
@@ -1219,30 +1256,35 @@ def fetch_bias_stories() -> list:
     date_str = datetime.now().strftime("%A %d %B %Y")
 
     prompt = (
-        f"It is {date_str}. Search for the most biased, sensational or politically charged "
-        f"UK news headlines, tweets and political statements published TODAY.\n\n"
-        f"Search these specific sources:\n"
-        f"1. Search: 'GB News headline today'\n"
-        f"2. Search: 'Nigel Farage tweet today' OR 'Reform UK statement today'\n"
-        f"3. Search: 'Labour Party statement today' OR 'Keir Starmer tweet today'\n"
-        f"4. Search: 'Telegraph opinion today' OR 'Daily Mail headline today'\n"
-        f"5. Search: 'Conservative Party statement today'\n\n"
-        f"For each search, find the single most biased or inflammatory piece of content published today. "
-        f"Use the bias signals below to rate each one:\n"
-        f"RIGHT-LEANING: anti-immigration language, pro-business framing, criticism of Labour/SNP/Greens, "
-        f"support for Brexit, law and order emphasis, climate scepticism, culture war framing.\n"
-        f"LEFT-LEANING: anti-Conservative language, pro-union framing, criticism of Tories/Reform/UKIP, "
-        f"pro-NHS spending, inequality emphasis, pro-immigration framing, anti-austerity language.\n\n"
+        f"It is {date_str}. Search for biased, sensational or politically charged UK news "
+        f"headlines, tweets and political statements published in the last 24 hours.\n\n"
+        f"You must find EXACTLY:\n"
+        f"- 2 right-leaning items (from GB News, Telegraph, Daily Mail, Reform UK, or Conservative Party)\n"
+        f"- 2 left-leaning items (from Labour Party, The Mirror, Guardian Opinion, or left-wing politicians)\n"
+        f"- 1 centre/institutional item (from MSN, Sky News, BBC Opinion, or a centrist politician)\n\n"
+        f"Do NOT use the same publication twice across the 5 results.\n\n"
+        f"Search queries to run (include the date {date_str} in each search for recency):\n"
+        f"1. 'GB News {date_str}' OR 'Nigel Farage {date_str}' OR 'Reform UK {date_str}'\n"
+        f"2. 'Telegraph opinion {date_str}' OR 'Daily Mail {date_str}'\n"
+        f"3. 'Labour Party statement {date_str}' OR 'Keir Starmer {date_str}'\n"
+        f"4. 'Guardian opinion {date_str}' OR 'Mirror {date_str}' OR 'left wing politician {date_str}'\n"
+        f"5. 'Conservative Party {date_str}' OR 'Sky News opinion {date_str}'\n\n"
+        f"For each result, find and include the actual URL (article URL, tweet URL, or party website URL).\n\n"
+        f"RIGHT-LEANING signals: anti-immigration language, pro-business framing, criticism of "
+        f"Labour/SNP/Greens, support for Brexit, law and order emphasis, climate scepticism, culture war framing.\n"
+        f"LEFT-LEANING signals: anti-Conservative language, pro-union framing, criticism of "
+        f"Tories/Reform/UKIP, pro-NHS spending, inequality emphasis, pro-immigration framing, anti-austerity.\n\n"
         f"Return ONLY a valid JSON array of exactly 5 objects. No markdown, no explanation outside the JSON.\n"
         f"Each object must have these exact keys:\n"
-        f"  headline, source, bias_direction, bias_intensity, technique, explanation\n\n"
+        f"  headline, source, url, bias_direction, bias_intensity, technique, explanation\n\n"
         f"bias_direction must be one of: Strong Right, Right, Centre-Right, Centre, Centre-Left, Left, Strong Left\n"
         f"bias_intensity is 1-10\n"
+        f"url must be the real URL of the article, tweet, or post (not empty)\n"
         f"technique must be one of: Loaded Language, Fear Mongering, Scapegoating, False Balance, "
         f"Cherry Picking, Ad Hominem, Whataboutism\n"
         f"explanation is one sentence\n\n"
-        f"Only score Centre if content has genuinely equal representation with no loaded language. "
-        f"Most entries should be Left or Right."
+        f"The 5 results must be: result 1 = Right, result 2 = Right, result 3 = Left, "
+        f"result 4 = Left, result 5 = Centre. Different sources for all 5."
     )
 
     client = _anthropic.Anthropic(api_key=api_key)
@@ -1281,7 +1323,7 @@ def fetch_bias_stories() -> list:
                 stories.append({
                     'title':           item.get('headline', ''),
                     'source_name':     item.get('source', ''),
-                    'url':             '',
+                    'url':             item.get('url', ''),
                     'bias_direction':  item.get('bias_direction', 'Centre'),
                     'bias_intensity':  item.get('bias_intensity', 5),
                     'technique':       item.get('technique', ''),
@@ -1335,8 +1377,9 @@ def get_subscriber_emails() -> list:
     return list(emails)
 
 
-def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str) -> str:
+def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, briefing_id: str = "") -> str:
     base_url = "https://cronkite-backend-production.up.railway.app"
+    view_url = f"{base_url}/briefing/{briefing_id}" if briefing_id else f"{base_url}/briefing/latest"
 
     # ── Section 1: Cronkite Coverage ─────────────────────────────────────────
     coverage_html = ""
@@ -1346,10 +1389,10 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str) 
             summary = s.get('summary') or 'Summary unavailable.'
             bullets += f"""
             <li style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f0ede8;">
-              <a href="{s['url']}" style="font-family:Georgia,serif;font-size:14px;font-weight:600;
-                 color:#1c1917;text-decoration:none;line-height:1.4;display:block;margin-bottom:5px">
+              <span style="font-family:Georgia,serif;font-size:14px;font-weight:600;
+                 color:#1c1917;line-height:1.4;display:block;margin-bottom:5px">
                 {s['title']}
-              </a>
+              </span>
               <span style="font-size:12px;color:#57534e;line-height:1.5">{summary}</span>
             </li>"""
 
@@ -1450,7 +1493,7 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str) 
 
     <!-- View full briefing -->
     <div style="text-align:center;margin-bottom:24px">
-      <a href="{base_url}/briefing/latest"
+      <a href="{view_url}"
          style="display:inline-block;background:#c41e3a;color:white;font-size:13px;font-weight:600;
                 padding:12px 28px;border-radius:8px;text-decoration:none;letter-spacing:0.02em">
         View Full Briefing
@@ -1478,19 +1521,40 @@ async def run_daily_briefing() -> int:
     """Fetch categorised stories + bias stories, build newsletter, send to subscribers."""
     global _latest_briefing_html, _latest_briefing_date
     import resend
-    from datetime import datetime
+    import uuid
+    from datetime import datetime, date as date_type
+    from supabase import create_client
 
     logger.info("=== Daily Briefing job starting ===")
 
     categorised  = fetch_categorised_stories()
     bias_stories = fetch_bias_stories()
 
+    # Generate UUID before building HTML so the "View Full Briefing" link can use it
+    briefing_id = str(uuid.uuid4())
     date_str = datetime.now().strftime("%A, %d %B %Y")
-    html = build_newsletter_html(categorised, bias_stories, date_str)
+    html = build_newsletter_html(categorised, bias_stories, date_str, briefing_id)
 
+    # Store in memory as convenience fallback
     _latest_briefing_html = html
     _latest_briefing_date = date_str
-    logger.info("Latest briefing stored in memory")
+
+    # Persist to Supabase daily_briefings table
+    try:
+        svc_url = os.getenv('SUPABASE_URL', '')
+        svc_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        if svc_url and svc_key:
+            svc = create_client(svc_url, svc_key)
+            svc.table('daily_briefings').insert({
+                'id':           briefing_id,
+                'date':         date_type.today().isoformat(),
+                'html_content': html,
+            }).execute()
+            logger.info(f"Briefing saved to Supabase: {briefing_id}")
+        else:
+            logger.warning("Supabase not configured — briefing not persisted")
+    except Exception as e:
+        logger.error(f"Failed to save briefing to Supabase: {e}")
 
     emails = get_subscriber_emails()
     logger.info(f"Sending Daily Briefing to {len(emails)} subscribers")
@@ -1513,27 +1577,63 @@ async def run_daily_briefing() -> int:
     return sent
 
 
-@app.get("/briefing/latest")
-async def briefing_latest():
-    """Serve the latest Daily Briefing as a full-page scrollable HTML document."""
-    from fastapi.responses import HTMLResponse
-    if not _latest_briefing_html:
-        return HTMLResponse(content="""<!DOCTYPE html>
+def _expand_briefing_html(html: str) -> str:
+    """Expand email-width HTML to full-page reading width."""
+    return html.replace(
+        "max-width:600px;margin:0 auto;padding:24px 16px",
+        "max-width:680px;margin:0 auto;padding:40px 24px"
+    )
+
+_NO_BRIEFING_HTML = """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Cronkite Briefing</title></head>
 <body style="font-family:Georgia,serif;text-align:center;padding:80px 20px;color:#44403c">
   <h1 style="font-size:24px;color:#1c1917">No briefing available yet</h1>
   <p>The Daily Briefing runs at 08:30 UK time. Check back then, or trigger it manually.</p>
-</body></html>""", status_code=200)
+</body></html>"""
 
-    # Wrap in a print-friendly full-page shell
-    page_html = _latest_briefing_html.replace(
-        "<body style=\"margin:0;padding:0;background:#f8f7f5;",
-        "<body style=\"margin:0;padding:0;background:#f8f7f5;min-height:100vh;"
-    ).replace(
-        "max-width:600px;margin:0 auto;padding:24px 16px",
-        "max-width:680px;margin:0 auto;padding:40px 24px"
-    )
-    return HTMLResponse(content=page_html)
+
+@app.get("/briefing/{briefing_id}")
+async def briefing_by_id(briefing_id: str):
+    """Fetch a specific Daily Briefing by UUID from Supabase."""
+    from fastapi.responses import HTMLResponse
+    from supabase import create_client
+    try:
+        svc_url = os.getenv('SUPABASE_URL', '')
+        svc_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        if not svc_url or not svc_key:
+            raise ValueError("Supabase not configured")
+        svc = create_client(svc_url, svc_key)
+        result = svc.table('daily_briefings').select('html_content').eq('id', briefing_id).single().execute()
+        if not result.data:
+            return HTMLResponse(content=_NO_BRIEFING_HTML, status_code=404)
+        return HTMLResponse(content=_expand_briefing_html(result.data['html_content']))
+    except Exception as e:
+        logger.error(f"briefing_by_id error: {e}")
+        # Fall back to in-memory if available
+        if _latest_briefing_html:
+            return HTMLResponse(content=_expand_briefing_html(_latest_briefing_html))
+        return HTMLResponse(content=_NO_BRIEFING_HTML, status_code=404)
+
+
+@app.get("/briefing/latest")
+async def briefing_latest():
+    """Redirect to the most recent briefing by fetching latest UUID from Supabase."""
+    from fastapi.responses import HTMLResponse, RedirectResponse
+    from supabase import create_client
+    try:
+        svc_url = os.getenv('SUPABASE_URL', '')
+        svc_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        if svc_url and svc_key:
+            svc = create_client(svc_url, svc_key)
+            result = svc.table('daily_briefings').select('id').order('created_at', desc=True).limit(1).execute()
+            if result.data:
+                return RedirectResponse(url=f"/briefing/{result.data[0]['id']}")
+    except Exception as e:
+        logger.warning(f"briefing_latest Supabase lookup failed: {e}")
+    # Fall back to in-memory
+    if _latest_briefing_html:
+        return HTMLResponse(content=_expand_briefing_html(_latest_briefing_html))
+    return HTMLResponse(content=_NO_BRIEFING_HTML, status_code=200)
 
 
 @app.post("/api/briefing/send")
