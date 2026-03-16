@@ -1172,29 +1172,48 @@ def haiku_summarise(prompt: str, max_tokens: int = 300) -> str:
         return ""
 
 
+CATEGORY_DEFINITIONS = {
+    "International Conflicts and Wars": (
+        "active military conflicts, wars, airstrikes, invasions, peace negotiations, "
+        "NATO, UN peacekeeping. NOT trade deals, technology policy, or diplomatic meetings "
+        "unrelated to active conflict."
+    ),
+    "Domestic Politics and Elections": (
+        "UK government policy, parliamentary debates, party politics, elections, "
+        "local government, devolution."
+    ),
+    "Business and Economics": (
+        "markets, corporate news, trade, inflation, employment, economic data, company results."
+    ),
+    "Social and Cultural Issues": (
+        "health, education, crime, immigration, social policy, arts, religion, sport."
+    ),
+    "Technology, AI, and Social Media": (
+        "AI developments, tech company news, social media platforms, cybersecurity, "
+        "regulation of tech."
+    ),
+}
+
+
 def fetch_categorised_stories() -> dict:
     """Return {category: [story, ...]} where Haiku writes its own headline and summary.
     Sources are used as raw material only — Cronkite is the author, not cited.
-    Maintains seen_urls and seen_topics across all categories to prevent repeats."""
+    Passes accumulated seen_topics into each prompt so the model avoids repeats.
+    Post-generation dedup pass removes semantically similar headlines."""
     result = {}
-    seen_urls:   set = set()
-    seen_topics: set = set()
+    seen_urls:         set = set()
+    seen_topics:       set = set()   # raw RSS title fingerprints
+    generated_headlines: list = []   # all synthesised headlines for post-gen dedup
 
     for category, feeds in COVERAGE_FEEDS.items():
         raw_stories = fetch_stories_from_feeds(feeds, max_per_feed=5)
 
-        # Deduplicate raw stories against global seen sets before clustering
-        filtered = []
-        for s in raw_stories:
-            url   = s.get('url', '')
-            topic = s.get('title', '').lower()[:60]   # first 60 chars as topic fingerprint
-            if url and url in seen_urls:
-                continue
-            if topic and topic in seen_topics:
-                continue
-            filtered.append(s)
+        # Pre-filter raw stories by URL to avoid reusing same source article
+        filtered = [s for s in raw_stories if s.get('url', '') not in seen_urls]
 
-        # Group filtered stories into clusters of ~3 to synthesise 1 Cronkite story per cluster
+        cat_def = CATEGORY_DEFINITIONS.get(category, "")
+        exclusions = "; ".join(sorted(seen_topics)[:20]) if seen_topics else "none yet"
+
         clusters = [filtered[i:i+3] for i in range(0, min(len(filtered), 9), 3)]
         synthesised = []
         for cluster in clusters[:3]:
@@ -1202,22 +1221,34 @@ def fetch_categorised_stories() -> dict:
                 f"- {s['title']}: {s['snippet']}" for s in cluster if s.get('snippet') or s.get('title')
             )
             prompt = (
-                "You are a wire journalist at Cronkite, a neutral UK news service for schools. "
-                "Using the raw news items below as source material, write an original news story.\n\n"
-                "Rules:\n"
-                "- Write a precise headline (max 12 words) naming the specific people, organisations "
-                "and places involved. Never use generalisations.\n"
-                "  BAD: 'Former Labour politician named in scandal'\n"
-                "  GOOD: 'Former Labour Health Secretary Andy Burnham named in leaked document "
-                "linking him to property developer donations'\n"
-                "- Write a 2-sentence summary that names every person, organisation and place "
-                "specifically. No vague references.\n"
-                "- Do not mention BBC, Guardian, Sky, FT, or any outlet by name.\n"
-                "- Write as Cronkite's own journalism, not a summary of sources.\n\n"
+                f"You are a wire journalist at Cronkite, a neutral UK news service for schools.\n\n"
+                f"CATEGORY: {category}\n"
+                f"This category covers: {cat_def}\n"
+                f"You must strictly assign stories only to the matching category. "
+                f"If the raw material below does not clearly fit this category, write 'SKIP'.\n\n"
+                f"Topics already covered in this briefing (DO NOT repeat these):\n{exclusions}\n"
+                f"You must not write about any of these topics. Choose entirely different news stories.\n\n"
+                f"Using the raw news items below as source material, write an original news story:\n\n"
+                f"Rules:\n"
+                f"- Write a precise headline (max 12 words) naming the specific people, organisations "
+                f"and places involved. Never use generalisations.\n"
+                f"  BAD: 'Former Labour politician named in scandal'\n"
+                f"  GOOD: 'Former Labour Health Secretary Andy Burnham named in leaked document "
+                f"linking him to property developer donations'\n"
+                f"- Write a 2-sentence summary that names every person, organisation and place "
+                f"specifically. No vague references.\n"
+                f"- Do not mention BBC, Guardian, Sky, FT, or any outlet by name.\n"
+                f"- Write as Cronkite's own journalism, not a summary of sources.\n\n"
                 f"Raw material:\n{raw_text}\n\n"
-                "Format exactly as:\nHeadline: [your headline]\nSummary: [your 2-sentence summary]"
+                f"Format exactly as:\nHeadline: [your headline]\nSummary: [your 2-sentence summary]\n"
+                f"Or if the material doesn't fit this category: SKIP"
             )
             raw = haiku_summarise(prompt)
+
+            if raw.strip().upper().startswith("SKIP"):
+                logger.info(f"[DEDUP] Skipped off-category cluster for '{category}'")
+                continue
+
             headline = ""
             summary = ""
             for line in raw.splitlines():
@@ -1225,21 +1256,43 @@ def fetch_categorised_stories() -> dict:
                     headline = line[9:].strip()
                 elif line.startswith("Summary:"):
                     summary = line[8:].strip()
+
             if headline:
                 synthesised.append({
                     'title':   headline,
                     'url':     cluster[0]['url'],
                     'summary': summary,
                 })
-                # Mark all source URLs and topic fingerprints as seen
+                generated_headlines.append((category, headline))
+                # Add synthesised headline keywords and source URLs to seen sets
+                seen_topics.add(headline.lower()[:80])
                 for s in cluster:
                     if s.get('url'):
                         seen_urls.add(s['url'])
                     t = s.get('title', '').lower()[:60]
                     if t:
                         seen_topics.add(t)
+
         result[category] = synthesised
         logger.info(f"Category '{category}': {len(synthesised)} synthesised stories")
+
+    # ── Post-generation deduplication pass ───────────────────────────────────
+    # Check all 15 headlines for keywords overlap; remove likely duplicates
+    all_stories = [(cat, s) for cat, stories in result.items() for s in stories]
+    used_keywords: set = set()
+    for cat, s in all_stories:
+        words = set(s['title'].lower().split()) - {
+            'the','a','an','in','on','at','to','of','and','for','is','are','was',
+            'with','by','as','uk','over','after','amid','says','new','amid'
+        }
+        overlap = words & used_keywords
+        # If more than 3 content words overlap with a previous headline, flag as duplicate
+        if len(overlap) >= 3:
+            logger.info(f"[DEDUP] Removed duplicate topic: {s['title']}")
+            result[cat] = [x for x in result[cat] if x['title'] != s['title']]
+        else:
+            used_keywords |= words
+
     return result
 
 
