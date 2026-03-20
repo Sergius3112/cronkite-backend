@@ -26,6 +26,11 @@ async def startup_check():
         val = os.getenv(key)
         status = "[OK]" if val else "[MISSING]"
         logger.info(f"  {status} {key}")
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key:
+        logger.info("  [OK] OPENAI_API_KEY")
+    else:
+        logger.warning("  [MISSING] OPENAI_API_KEY — YouTube Whisper transcription will fail")
     logger.info("===========================================")
 
     # Start the daily briefing scheduler
@@ -140,11 +145,15 @@ def get_youtube_id(url: str) -> str:
             return match.group(1)
     return None
 
-def get_youtube_transcript(video_id: str) -> dict:
+async def fetch_youtube_transcript_whisper(url: str) -> dict:
     """Download audio via yt-dlp, transcribe via OpenAI Whisper, return verified metadata + transcript.
-    Raises ValueError on any failure — no silent fallbacks."""
+    Raises ValueError on any failure — no silent fallbacks, no auto-caption fallback."""
     import yt_dlp
-    import openai as _openai
+    from openai import OpenAI as _OpenAI
+
+    video_id = get_youtube_id(url)
+    if not video_id:
+        raise ValueError(f"Could not extract video ID from URL: {url}")
 
     openai_key = os.environ.get("OPENAI_API_KEY")
     if not openai_key:
@@ -152,32 +161,30 @@ def get_youtube_transcript(video_id: str) -> dict:
 
     audio_path = f"/tmp/{video_id}.mp3"
 
-    # ── Step 1: Verify metadata via yt-dlp ───────────────────────────────────
-    meta_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
-    try:
-        with yt_dlp.YoutubeDL(meta_opts) as ydl:
-            info = ydl.extract_info(
-                f"https://www.youtube.com/watch?v={video_id}", download=False)
-    except Exception as e:
-        raise ValueError(
-            f"Could not retrieve video metadata. The video may be private or age-restricted. "
-            f"(yt-dlp: {e})")
-
-    returned_id = info.get('id', '')
-    logger.info(f"[YT] Requested={video_id!r}, yt-dlp returned={returned_id!r}")
-    if returned_id and returned_id != video_id:
-        raise ValueError(f"Video ID mismatch: requested {video_id!r}, got {returned_id!r}.")
+    # ── Step 1: Extract verified metadata via yt-dlp ─────────────────────────
+    with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+        try:
+            info = ydl.extract_info(url, download=False)
+        except Exception as e:
+            raise ValueError(
+                f"Could not retrieve video metadata. The video may be private, "
+                f"age-restricted, or unavailable in your region. (yt-dlp: {e})")
 
     metadata = {
         'video_id':    video_id,
         'title':       info.get('title', 'Unknown'),
-        'channel':     info.get('uploader', 'Unknown'),
-        'uploader':    info.get('uploader', 'Unknown'),
+        'channel':     info.get('channel') or info.get('uploader', 'Unknown'),
+        'upload_date': info.get('upload_date', 'Unknown'),
+        'duration':    info.get('duration', 0),
         'description': info.get('description', '')[:500],
         'view_count':  info.get('view_count', 0),
-        'upload_date': info.get('upload_date', ''),
     }
-    logger.info(f"[YT] Verified: title={metadata['title']!r}, channel={metadata['channel']!r}")
+    logger.info(f"[WHISPER] Verified: title={metadata['title']!r}, channel={metadata['channel']!r}")
+
+    if not metadata['duration']:
+        raise ValueError(
+            "Could not retrieve audio for this video. It may be private, "
+            "age-restricted, or unavailable in your region.")
 
     # ── Step 2: Download audio only to /tmp/{video_id}.mp3 ───────────────────
     ydl_opts = {
@@ -193,25 +200,31 @@ def get_youtube_transcript(video_id: str) -> dict:
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
-        logger.info(f"[YT] Audio downloaded to {audio_path}")
+            ydl.download([url])
+        logger.info(f"[WHISPER] Audio downloaded to {audio_path}")
     except Exception as e:
-        raise ValueError(f"Could not download audio for video {video_id}. (yt-dlp: {e})")
+        raise ValueError(
+            f"Could not retrieve audio for this video. It may be private, "
+            f"age-restricted, or unavailable in your region. (yt-dlp: {e})")
 
     # ── Step 3: Transcribe with Whisper — always delete MP3 after ────────────
     try:
-        client = _openai.OpenAI(api_key=openai_key)
-        with open(audio_path, 'rb') as f:
-            result = client.audio.transcriptions.create(model="whisper-1", file=f)
-        transcript_text = result.text
-        logger.info(f"[YT] Whisper transcript length={len(transcript_text)} for {video_id}")
-        return {**metadata, 'transcript': transcript_text, 'transcript_source': 'whisper'}
+        client = _OpenAI(api_key=openai_key)
+        with open(audio_path, 'rb') as audio_file:
+            transcription = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                language="en",
+            )
+        metadata['transcript'] = transcription.text
+        logger.info(f"[WHISPER] Transcript length={len(transcription.text)} for {video_id}")
+        return metadata
     except Exception as e:
         raise ValueError(f"Whisper transcription failed for {video_id}. ({e})")
     finally:
         if os.path.exists(audio_path):
             os.remove(audio_path)
-            logger.info(f"[YT] Deleted temp file {audio_path}")
+            logger.info(f"[WHISPER] Deleted temp file: {audio_path}")
 
 def is_twitter_url(url: str) -> bool:
     return bool(re.search(r'(twitter\.com|x\.com)/\w+/status/', url))
@@ -839,20 +852,18 @@ async def analyse_url_internal(url: str) -> dict:
         raise ValueError("ANTHROPIC_API_KEY not configured")
 
     youtube_context = ""
+    yt_channel = None
     if is_youtube_url(url):
-        video_id = get_youtube_id(url)
-        if not video_id:
-            raise ValueError("Could not extract a video ID from the provided YouTube URL.")
-        # Strict: fetch transcript for the exact video ID or raise — no web search fallback
-        yt = get_youtube_transcript(video_id)  # raises ValueError on failure
+        yt = await fetch_youtube_transcript_whisper(url)  # raises ValueError on failure — no fallback
+        yt_channel = yt['channel']
         youtube_context = f"""
-VERIFIED VIDEO METADATA (do not infer or guess — use only these fields):
-You are analysing a video titled '{yt['title']}' uploaded by '{yt['channel']}' on '{yt['upload_date']}'.
-Video ID: {video_id}
+VERIFIED VIDEO METADATA — use ONLY these fields for source attribution. Do not infer, guess, or override them under any circumstances.
+You are analysing a YouTube video titled '{yt['title']}', uploaded by '{yt['channel']}' on '{yt['upload_date']}'.
+Video ID: {yt['video_id']}
 Views: {yt.get('view_count', 'Unknown')}
 Description: {yt.get('description', '')}
 
-Verified transcript (from video ID {video_id}):
+Verified transcript (Whisper, video ID {yt['video_id']}):
 {yt['transcript']}
 
 Analyse this video content as a media literacy expert. Pay special attention to:
@@ -861,7 +872,7 @@ Analyse this video content as a media literacy expert. Pay special attention to:
 - Claims made verbally and their verifiability
 - Emotional manipulation through language and tone
 """
-        logger.info(f"[YT] Passing verified transcript for video_id={video_id} to Claude")
+        logger.info(f"[WHISPER] Passing transcript for video_id={yt['video_id']} to Claude")
 
     prompt = f"""IMPORTANT: You must respond with ONLY a JSON object. No preamble, no explanation, no markdown. Start your response with {{ and end with }}.
 
@@ -973,6 +984,9 @@ IMPORTANT: Your entire response must be ONLY the JSON object above. No preamble,
 
     data = json.loads(json_match.group())
     data["overall_credibility_score"] = data.get("credibility_score", 50)
+    # For YouTube, enforce the verified channel name as source — never trust Claude's inference
+    if yt_channel:
+        data["source"] = yt_channel
     return data
 
 
