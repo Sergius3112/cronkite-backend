@@ -141,31 +141,32 @@ def get_youtube_id(url: str) -> str:
     return None
 
 def get_youtube_transcript(video_id: str) -> dict:
-    """Fetch metadata and transcript for a specific video ID.
-    Verifies that yt-dlp returns the same video ID before proceeding.
-    Raises ValueError if the video cannot be verified or transcript is unavailable."""
-    from youtube_transcript_api import YouTubeTranscriptApi
+    """Download audio via yt-dlp, transcribe via OpenAI Whisper, return verified metadata + transcript.
+    Raises ValueError on any failure — no silent fallbacks."""
     import yt_dlp
+    import openai as _openai
 
-    # ── Step 1: Fetch and verify metadata ────────────────────────────────────
-    ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if not openai_key:
+        raise ValueError("OPENAI_API_KEY is not set — Whisper transcription unavailable.")
+
+    audio_path = f"/tmp/{video_id}.mp3"
+
+    # ── Step 1: Verify metadata via yt-dlp ───────────────────────────────────
+    meta_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(meta_opts) as ydl:
             info = ydl.extract_info(
                 f"https://www.youtube.com/watch?v={video_id}", download=False)
     except Exception as e:
-        raise ValueError(f"Could not retrieve transcript for this video. "
-                         f"The video may be private, age-restricted, or lack captions. "
-                         f"(yt-dlp error: {e})")
-
-    # Verify the returned video ID matches what was requested
-    returned_id = info.get('id', '')
-    logger.info(f"[YT] Requested video_id={video_id!r}, yt-dlp returned id={returned_id!r}")
-    if returned_id and returned_id != video_id:
         raise ValueError(
-            f"Could not retrieve transcript for this video. "
-            f"Video ID mismatch: requested {video_id!r}, got {returned_id!r}."
-        )
+            f"Could not retrieve video metadata. The video may be private or age-restricted. "
+            f"(yt-dlp: {e})")
+
+    returned_id = info.get('id', '')
+    logger.info(f"[YT] Requested={video_id!r}, yt-dlp returned={returned_id!r}")
+    if returned_id and returned_id != video_id:
+        raise ValueError(f"Video ID mismatch: requested {video_id!r}, got {returned_id!r}.")
 
     metadata = {
         'video_id':    video_id,
@@ -178,19 +179,39 @@ def get_youtube_transcript(video_id: str) -> dict:
     }
     logger.info(f"[YT] Verified: title={metadata['title']!r}, channel={metadata['channel']!r}")
 
-    # ── Step 2: Fetch transcript for the exact video ID ───────────────────────
+    # ── Step 2: Download audio only to /tmp/{video_id}.mp3 ───────────────────
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': f'/tmp/{video_id}.%(ext)s',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '64',
+        }],
+        'quiet': True,
+        'no_warnings': True,
+    }
     try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(
-            video_id, languages=['en', 'en-GB', 'en-US'])
-        transcript_text = ' '.join([t['text'] for t in transcript_list])
-        logger.info(f"[YT] Transcript fetched for {video_id}, length={len(transcript_text)}")
-        return {**metadata, 'transcript': transcript_text, 'transcript_source': 'youtube'}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+        logger.info(f"[YT] Audio downloaded to {audio_path}")
     except Exception as e:
-        raise ValueError(
-            f"Could not retrieve transcript for this video. "
-            f"The video may be private, age-restricted, or lack captions. "
-            f"(transcript error: {e})"
-        )
+        raise ValueError(f"Could not download audio for video {video_id}. (yt-dlp: {e})")
+
+    # ── Step 3: Transcribe with Whisper — always delete MP3 after ────────────
+    try:
+        client = _openai.OpenAI(api_key=openai_key)
+        with open(audio_path, 'rb') as f:
+            result = client.audio.transcriptions.create(model="whisper-1", file=f)
+        transcript_text = result.text
+        logger.info(f"[YT] Whisper transcript length={len(transcript_text)} for {video_id}")
+        return {**metadata, 'transcript': transcript_text, 'transcript_source': 'whisper'}
+    except Exception as e:
+        raise ValueError(f"Whisper transcription failed for {video_id}. ({e})")
+    finally:
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+            logger.info(f"[YT] Deleted temp file {audio_path}")
 
 def is_twitter_url(url: str) -> bool:
     return bool(re.search(r'(twitter\.com|x\.com)/\w+/status/', url))
