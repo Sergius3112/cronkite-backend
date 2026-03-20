@@ -37,9 +37,10 @@ async def startup_check():
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         _scheduler = AsyncIOScheduler(timezone="Europe/London")
-        _scheduler.add_job(run_daily_briefing, 'cron', hour=8, minute=30)
+        # PAUSED — re-enable when pilot schools are onboarded
+        # _scheduler.add_job(run_daily_briefing, 'cron', hour=8, minute=30)
         _scheduler.start()
-        logger.info("Scheduler started — Daily Briefing at 08:30 Europe/London")
+        logger.info("Scheduler started — Daily Briefing PAUSED (manual trigger only)")
     except Exception as _sched_err:
         logger.warning(f"Scheduler failed to start: {_sched_err}")
 
