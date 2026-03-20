@@ -141,39 +141,56 @@ def get_youtube_id(url: str) -> str:
     return None
 
 def get_youtube_transcript(video_id: str) -> dict:
+    """Fetch metadata and transcript for a specific video ID.
+    Verifies that yt-dlp returns the same video ID before proceeding.
+    Raises ValueError if the video cannot be verified or transcript is unavailable."""
     from youtube_transcript_api import YouTubeTranscriptApi
     import yt_dlp
 
-    # Get metadata
-    metadata = {'title': 'Unknown', 'channel': 'Unknown',
-                'description': '', 'view_count': 0, 'upload_date': ''}
+    # ── Step 1: Fetch and verify metadata ────────────────────────────────────
+    ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
     try:
-        ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(
-                f"https://youtube.com/watch?v={video_id}", download=False)
-            metadata = {
-                'title': info.get('title', 'Unknown'),
-                'channel': info.get('uploader', 'Unknown'),
-                'description': info.get('description', '')[:500],
-                'view_count': info.get('view_count', 0),
-                'upload_date': info.get('upload_date', ''),
-            }
+                f"https://www.youtube.com/watch?v={video_id}", download=False)
     except Exception as e:
-        logger.warning(f"Could not fetch metadata: {e}")
+        raise ValueError(f"Could not retrieve transcript for this video. "
+                         f"The video may be private, age-restricted, or lack captions. "
+                         f"(yt-dlp error: {e})")
 
-    # Try YouTube transcript API
+    # Verify the returned video ID matches what was requested
+    returned_id = info.get('id', '')
+    logger.info(f"[YT] Requested video_id={video_id!r}, yt-dlp returned id={returned_id!r}")
+    if returned_id and returned_id != video_id:
+        raise ValueError(
+            f"Could not retrieve transcript for this video. "
+            f"Video ID mismatch: requested {video_id!r}, got {returned_id!r}."
+        )
+
+    metadata = {
+        'video_id':    video_id,
+        'title':       info.get('title', 'Unknown'),
+        'channel':     info.get('uploader', 'Unknown'),
+        'uploader':    info.get('uploader', 'Unknown'),
+        'description': info.get('description', '')[:500],
+        'view_count':  info.get('view_count', 0),
+        'upload_date': info.get('upload_date', ''),
+    }
+    logger.info(f"[YT] Verified: title={metadata['title']!r}, channel={metadata['channel']!r}")
+
+    # ── Step 2: Fetch transcript for the exact video ID ───────────────────────
     try:
         transcript_list = YouTubeTranscriptApi.get_transcript(
             video_id, languages=['en', 'en-GB', 'en-US'])
         transcript_text = ' '.join([t['text'] for t in transcript_list])
-        return {**metadata, 'transcript': transcript_text,
-                'transcript_source': 'youtube'}
-    except Exception:
-        # No transcript available — Claude will use web search instead
-        logger.info(f"No transcript for {video_id}, Claude will search")
-        return {**metadata, 'transcript': None,
-                'transcript_source': 'none'}
+        logger.info(f"[YT] Transcript fetched for {video_id}, length={len(transcript_text)}")
+        return {**metadata, 'transcript': transcript_text, 'transcript_source': 'youtube'}
+    except Exception as e:
+        raise ValueError(
+            f"Could not retrieve transcript for this video. "
+            f"The video may be private, age-restricted, or lack captions. "
+            f"(transcript error: {e})"
+        )
 
 def is_twitter_url(url: str) -> bool:
     return bool(re.search(r'(twitter\.com|x\.com)/\w+/status/', url))
@@ -803,32 +820,19 @@ async def analyse_url_internal(url: str) -> dict:
     youtube_context = ""
     if is_youtube_url(url):
         video_id = get_youtube_id(url)
-        if video_id:
-            try:
-                yt = get_youtube_transcript(video_id)
-                if yt.get('transcript_source') == 'none':
-                    youtube_context = f"""
-This is a YouTube video.
-Title: {yt.get('title', 'Unknown')}
-Channel: {yt.get('channel', 'Unknown')}
-Upload date: {yt.get('upload_date', 'Unknown')}
+        if not video_id:
+            raise ValueError("Could not extract a video ID from the provided YouTube URL.")
+        # Strict: fetch transcript for the exact video ID or raise — no web search fallback
+        yt = get_youtube_transcript(video_id)  # raises ValueError on failure
+        youtube_context = f"""
+VERIFIED VIDEO METADATA (do not infer or guess — use only these fields):
+You are analysing a video titled '{yt['title']}' uploaded by '{yt['channel']}' on '{yt['upload_date']}'.
+Video ID: {video_id}
 Views: {yt.get('view_count', 'Unknown')}
 Description: {yt.get('description', '')}
 
-No transcript is available for this video. Use web search to find reviews, summaries, news coverage and fact-checks of this video to produce your analysis.
-"""
-                    logger.info(f"No transcript for {video_id}, using web search fallback")
-                else:
-                    youtube_context = f"""
-This is a YouTube video.
-Title: {yt.get('title', 'Unknown')}
-Channel: {yt.get('channel', 'Unknown')}
-Upload date: {yt.get('upload_date', 'Unknown')}
-Views: {yt.get('view_count', 'Unknown')}
-Description: {yt.get('description', '')}
-
-Full transcript:
-{yt.get('transcript', '')}
+Verified transcript (from video ID {video_id}):
+{yt['transcript']}
 
 Analyse this video content as a media literacy expert. Pay special attention to:
 - Spoken loaded language and rhetorical techniques
@@ -836,9 +840,7 @@ Analyse this video content as a media literacy expert. Pay special attention to:
 - Claims made verbally and their verifiability
 - Emotional manipulation through language and tone
 """
-                    logger.info(f"YouTube transcript fetched for {video_id}, len={len(yt.get('transcript', ''))}")
-            except Exception as yt_err:
-                logger.warning(f"YouTube transcript failed for {video_id}: {yt_err}")
+        logger.info(f"[YT] Passing verified transcript for video_id={video_id} to Claude")
 
     prompt = f"""IMPORTANT: You must respond with ONLY a JSON object. No preamble, no explanation, no markdown. Start your response with {{ and end with }}.
 
