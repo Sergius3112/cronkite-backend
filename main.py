@@ -571,7 +571,7 @@ _DIST = BASE_DIR / "frontend" / "dist"
 
 @app.get("/")
 async def serve_root():
-    return FileResponse(_DIST / "index.html")
+    return FileResponse(_DIST / "landing.html")
 
 @app.get("/teacher")
 async def serve_teacher():

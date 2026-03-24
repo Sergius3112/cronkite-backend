@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cronkite — AI Media Literacy for Secondary Schools</title>
+  <meta name="description" content="Cronkite helps UK secondary school teachers assign, analyse and discuss real news articles and videos in the classroom. Powered by AI. Aligned to Ofcom and DfE frameworks." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --red: #C41E3A; --red-light: #e8233f; --ink: #1A1714; --ink-soft: #3D3530;
+      --paper: #F7F3EC; --paper-dark: #EDE8DF; --paper-mid: #F0EBE2;
+      --rule: #D4CEC4; --text-muted: #8A8279; --white: #FFFFFF;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--paper); color: var(--ink); overflow-x: hidden; }
+    body::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 0; opacity: 0.4; }
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 0 48px; height: 64px; background: var(--paper); border-bottom: 1px solid var(--rule); }
+    .nav-logo { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 1.4rem; color: var(--ink); letter-spacing: -0.02em; text-decoration: none; }
+    .nav-logo span { color: var(--red); }
+    .nav-links { display: flex; gap: 36px; align-items: center; list-style: none; }
+    .nav-links a { font-size: 0.85rem; font-weight: 500; color: var(--ink-soft); text-decoration: none; letter-spacing: 0.02em; transition: color 0.2s; }
+    .nav-links a:hover { color: var(--red); }
+    .nav-cta { background: var(--red) !important; color: var(--white) !important; padding: 8px 20px; border-radius: 2px; font-weight: 500 !important; transition: background 0.2s !important; }
+    .nav-cta:hover { background: var(--red-light) !important; }
+    .nav-login { display: flex; gap: 10px; align-items: center; }
+    .btn-login-student { font-size: 0.85rem; font-weight: 500; color: var(--ink-soft); text-decoration: none; padding: 7px 16px; border: 1px solid var(--rule); border-radius: 2px; background: var(--white); transition: border-color 0.2s, color 0.2s; }
+    .btn-login-student:hover { border-color: var(--ink); color: var(--ink); }
+    .btn-login-teacher { font-size: 0.85rem; font-weight: 500; color: var(--white); text-decoration: none; padding: 7px 16px; border: 1px solid var(--red); border-radius: 2px; background: var(--red); transition: background 0.2s; }
+    .btn-login-teacher:hover { background: var(--red-light); }
+    .hero { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 64px 0 0; position: relative; }
+    .hero-left { padding: 80px 64px 80px 80px; position: relative; z-index: 1; }
+    .hero-eyebrow { display: inline-flex; align-items: center; gap: 10px; font-size: 0.72rem; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--red); margin-bottom: 28px; }
+    .hero-eyebrow::before { content: ''; display: block; width: 24px; height: 1px; background: var(--red); }
+    .hero h1 { font-family: 'Playfair Display', serif; font-size: clamp(2.8rem, 4vw, 4rem); font-weight: 700; line-height: 1.08; letter-spacing: -0.03em; color: var(--ink); margin-bottom: 28px; }
+    .hero h1 em { font-style: italic; color: var(--red); }
+    .hero-sub { font-size: 1.05rem; font-weight: 300; line-height: 1.7; color: var(--ink-soft); max-width: 460px; margin-bottom: 44px; }
+    .hero-actions { display: flex; gap: 16px; align-items: center; }
+    .btn-primary { background: var(--red); color: var(--white); padding: 14px 28px; border-radius: 2px; font-family: 'DM Sans', sans-serif; font-size: 0.9rem; font-weight: 500; text-decoration: none; letter-spacing: 0.02em; transition: background 0.2s, transform 0.15s; display: inline-block; }
+    .btn-primary:hover { background: var(--red-light); transform: translateY(-1px); }
+    .btn-secondary { color: var(--ink-soft); font-size: 0.88rem; font-weight: 400; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: color 0.2s; }
+    .btn-secondary:hover { color: var(--red); }
+    .btn-secondary::after { content: '→'; }
+    .hero-trust { margin-top: 56px; padding-top: 32px; border-top: 1px solid var(--rule); }
+    .hero-trust p { font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 16px; }
+    .trust-badges { display: flex; gap: 20px; flex-wrap: wrap; }
+    .trust-badge { font-size: 0.78rem; font-weight: 500; color: var(--ink-soft); background: var(--paper-dark); border: 1px solid var(--rule); padding: 5px 12px; border-radius: 2px; }
+    .hero-right { background: var(--ink); min-height: 100vh; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 80px 48px; }
+    .hero-right::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, transparent, transparent 28px, rgba(255,255,255,0.025) 28px, rgba(255,255,255,0.025) 29px); }
+    .mockup-card { background: var(--paper); width: 100%; max-width: 400px; border-radius: 3px; overflow: hidden; box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.3); position: relative; z-index: 1; animation: float 6s ease-in-out infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0px) rotate(-0.5deg); } 50% { transform: translateY(-10px) rotate(0.5deg); } }
+    .mockup-header { background: var(--ink); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; }
+    .mockup-logo { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 1.1rem; color: var(--paper); letter-spacing: -0.02em; }
+    .mockup-logo span { color: var(--red); }
+    .mockup-tag { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+    .mockup-body { padding: 20px; }
+    .mockup-url { font-size: 0.68rem; color: var(--text-muted); background: var(--paper-dark); border: 1px solid var(--rule); padding: 6px 10px; border-radius: 2px; margin-bottom: 16px; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mockup-headline { font-family: 'Playfair Display', serif; font-size: 1.05rem; font-weight: 700; line-height: 1.3; color: var(--ink); margin-bottom: 16px; }
+    .mockup-score-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .score-chip { flex: 1; padding: 8px 10px; border-radius: 2px; border: 1px solid var(--rule); text-align: center; }
+    .score-chip .label { font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 3px; }
+    .score-chip .value { font-family: 'Playfair Display', serif; font-size: 1.1rem; font-weight: 700; color: var(--ink); }
+    .score-chip.red .value { color: var(--red); }
+    .score-chip.amber .value { color: #C47B1E; }
+    .mockup-section { margin-bottom: 14px; }
+    .mockup-section-label { font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+    .mockup-section-label::after { content: ''; flex: 1; height: 1px; background: var(--rule); }
+    .technique-tag { display: inline-block; font-size: 0.68rem; font-weight: 500; padding: 3px 8px; border-radius: 2px; margin: 2px; }
+    .technique-tag.red { background: #fde8ec; color: var(--red); }
+    .technique-tag.amber { background: #fdf3e0; color: #C47B1E; }
+    .technique-tag.blue { background: #e8f0fd; color: #1E4FC4; }
+    .mockup-bias-bar { height: 6px; background: var(--paper-dark); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+    .mockup-bias-fill { height: 100%; width: 72%; background: linear-gradient(90deg, var(--red), #e8233f); border-radius: 3px; }
+    .mockup-footer { background: var(--paper-dark); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--rule); }
+    .mockup-footer-text { font-size: 0.68rem; color: var(--text-muted); }
+    .mockup-assign-btn { font-size: 0.7rem; font-weight: 500; background: var(--red); color: white; padding: 5px 12px; border-radius: 2px; border: none; cursor: pointer; }
+    section { position: relative; z-index: 1; }
+    .section-label { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--red); font-weight: 500; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+    .section-label::before { content: ''; display: block; width: 20px; height: 1px; background: var(--red); }
+    .how { padding: 120px 80px; background: var(--white); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+    .how-inner { max-width: 1100px; margin: 0 auto; }
+    .how h2 { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 3vw, 2.8rem); font-weight: 700; line-height: 1.1; letter-spacing: -0.03em; margin-bottom: 64px; max-width: 520px; }
+    .how h2 em { font-style: italic; color: var(--red); }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid var(--rule); }
+    .step { padding: 40px 36px; border-right: 1px solid var(--rule); position: relative; }
+    .step:last-child { border-right: none; }
+    .step-num { font-family: 'Playfair Display', serif; font-size: 3rem; font-weight: 700; color: var(--paper-dark); line-height: 1; margin-bottom: 20px; display: block; }
+    .step h3 { font-family: 'Playfair Display', serif; font-size: 1.15rem; font-weight: 700; margin-bottom: 12px; color: var(--ink); }
+    .step p { font-size: 0.9rem; line-height: 1.7; color: var(--ink-soft); font-weight: 300; }
+    .features { padding: 120px 80px; background: var(--paper); }
+    .features-inner { max-width: 1100px; margin: 0 auto; }
+    .features h2 { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 3vw, 2.8rem); font-weight: 700; line-height: 1.1; letter-spacing: -0.03em; margin-bottom: 64px; max-width: 560px; }
+    .features-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+    .feature { background: var(--paper); padding: 44px 40px; transition: background 0.2s; }
+    .feature:hover { background: var(--white); }
+    .feature-icon { width: 40px; height: 40px; background: var(--ink); border-radius: 2px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; font-size: 1.1rem; }
+    .feature h3 { font-family: 'Playfair Display', serif; font-size: 1.1rem; font-weight: 700; margin-bottom: 10px; color: var(--ink); }
+    .feature p { font-size: 0.88rem; line-height: 1.7; color: var(--ink-soft); font-weight: 300; }
+    .policy { padding: 80px; background: var(--ink); color: var(--paper); }
+    .policy-inner { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+    .policy h2 { font-family: 'Playfair Display', serif; font-size: clamp(1.8rem, 2.5vw, 2.4rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.03em; margin-bottom: 20px; }
+    .policy h2 em { font-style: italic; color: var(--red); }
+    .policy p { font-size: 0.92rem; line-height: 1.75; color: rgba(247,243,236,0.7); font-weight: 300; }
+    .policy-badges { display: flex; flex-direction: column; gap: 16px; }
+    .policy-badge { display: flex; align-items: flex-start; gap: 16px; padding: 20px 24px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 2px; }
+    .policy-badge-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 2px; }
+    .policy-badge h4 { font-size: 0.88rem; font-weight: 500; margin-bottom: 4px; color: var(--paper); }
+    .policy-badge p { font-size: 0.8rem; color: rgba(247,243,236,0.5); line-height: 1.5; }
+    .briefing { padding: 120px 80px; background: var(--paper-mid); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+    .briefing-inner { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+    .briefing h2 { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 2.8vw, 2.6rem); font-weight: 700; line-height: 1.1; letter-spacing: -0.03em; margin-bottom: 20px; }
+    .briefing h2 em { font-style: italic; color: var(--red); }
+    .briefing-desc { font-size: 0.95rem; line-height: 1.75; color: var(--ink-soft); font-weight: 300; margin-bottom: 32px; }
+    .briefing-features { display: flex; flex-direction: column; gap: 12px; }
+    .briefing-feature { display: flex; align-items: center; gap: 12px; font-size: 0.88rem; color: var(--ink-soft); }
+    .briefing-feature::before { content: ''; width: 6px; height: 6px; background: var(--red); border-radius: 50%; flex-shrink: 0; }
+    .briefing-card { background: var(--white); border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.08); }
+    .briefing-card-header { background: var(--ink); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+    .briefing-card-header span { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 1rem; color: var(--paper); }
+    .briefing-card-header span em { color: var(--red); font-style: normal; }
+    .briefing-card-date { font-size: 0.7rem; color: var(--text-muted); letter-spacing: 0.05em; }
+    .briefing-section { padding: 20px 24px; border-bottom: 1px solid var(--rule); }
+    .briefing-section:last-child { border-bottom: none; }
+    .briefing-section-label { font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--red); font-weight: 500; margin-bottom: 12px; }
+    .briefing-item { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed var(--rule); }
+    .briefing-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .briefing-item-head { font-size: 0.82rem; font-weight: 500; color: var(--ink); margin-bottom: 3px; line-height: 1.4; }
+    .briefing-item-body { font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; font-weight: 300; }
+    .bias-row { display: flex; align-items: center; gap: 10px; }
+    .bias-source { font-size: 0.75rem; font-weight: 500; color: var(--ink); flex: 1; }
+    .bias-label { font-size: 0.65rem; padding: 2px 7px; border-radius: 2px; font-weight: 500; }
+    .bias-label.right { background: #fde8ec; color: var(--red); }
+    .bias-label.left { background: #e8f0fd; color: #1E4FC4; }
+    .login-section { padding: 80px; background: var(--ink); text-align: center; }
+    .login-section h2 { font-family: 'Playfair Display', serif; font-size: clamp(1.8rem, 2.5vw, 2.4rem); font-weight: 700; color: var(--paper); letter-spacing: -0.03em; margin-bottom: 12px; }
+    .login-section h2 em { font-style: italic; color: var(--red); }
+    .login-section p { font-size: 0.95rem; color: rgba(247,243,236,0.6); font-weight: 300; margin-bottom: 40px; }
+    .login-cards { display: flex; gap: 20px; justify-content: center; max-width: 600px; margin: 0 auto; }
+    .login-card { flex: 1; padding: 36px 32px; border-radius: 3px; text-decoration: none; transition: transform 0.2s, background 0.2s; }
+    .login-card:hover { transform: translateY(-3px); }
+    .login-card.student { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
+    .login-card.student:hover { background: rgba(255,255,255,0.08); }
+    .login-card.teacher { background: var(--red); border: 1px solid var(--red); }
+    .login-card.teacher:hover { background: var(--red-light); }
+    .login-card-icon { font-size: 2rem; margin-bottom: 16px; display: block; }
+    .login-card h3 { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 700; color: var(--paper); margin-bottom: 8px; }
+    .login-card p { font-size: 0.82rem; color: rgba(247,243,236,0.6); line-height: 1.6; margin-bottom: 20px; }
+    .login-card.teacher p { color: rgba(255,255,255,0.8); }
+    .login-card-arrow { font-size: 0.85rem; font-weight: 500; color: var(--paper); display: flex; align-items: center; gap: 6px; justify-content: center; }
+    .cta { padding: 120px 80px; text-align: center; background: var(--paper); }
+    .cta h2 { font-family: 'Playfair Display', serif; font-size: clamp(2.2rem, 3.5vw, 3.2rem); font-weight: 700; line-height: 1.1; letter-spacing: -0.03em; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto; }
+    .cta h2 em { font-style: italic; color: var(--red); }
+    .cta p { font-size: 1rem; color: var(--ink-soft); font-weight: 300; line-height: 1.7; max-width: 480px; margin: 0 auto 44px; }
+    .cta-form { display: flex; gap: 12px; max-width: 440px; margin: 0 auto 16px; }
+    .cta-input { flex: 1; padding: 13px 16px; border: 1px solid var(--rule); background: var(--white); border-radius: 2px; font-family: 'DM Sans', sans-serif; font-size: 0.9rem; color: var(--ink); outline: none; transition: border-color 0.2s; }
+    .cta-input:focus { border-color: var(--red); }
+    .cta-input::placeholder { color: var(--text-muted); }
+    .cta-note { font-size: 0.75rem; color: var(--text-muted); }
+    footer { border-top: 1px solid var(--rule); padding: 40px 80px; display: flex; align-items: center; justify-content: space-between; background: var(--paper); }
+    .footer-logo { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 1.1rem; color: var(--ink); letter-spacing: -0.02em; }
+    .footer-logo span { color: var(--red); }
+    .footer-links { display: flex; gap: 28px; list-style: none; }
+    .footer-links a { font-size: 0.8rem; color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--red); }
+    .footer-copy { font-size: 0.75rem; color: var(--text-muted); }
+    .fade-up { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+    .fade-up.visible { opacity: 1; transform: translateY(0); }
+    @media (max-width: 900px) {
+      nav { padding: 0 24px; }
+      .nav-links { display: none; }
+      .nav-login { gap: 8px; }
+      .btn-login-student, .btn-login-teacher { padding: 6px 12px; font-size: 0.78rem; }
+      .hero { grid-template-columns: 1fr; }
+      .hero-left { padding: 48px 24px; }
+      .hero-right { min-height: 400px; }
+      .how, .features, .briefing, .cta, .policy, .login-section { padding: 80px 24px; }
+      .steps { grid-template-columns: 1fr; }
+      .step { border-right: none; border-bottom: 1px solid var(--rule); }
+      .step:last-child { border-bottom: none; }
+      .features-grid { grid-template-columns: 1fr; }
+      .policy-inner, .briefing-inner { grid-template-columns: 1fr; gap: 40px; }
+      .login-cards { flex-direction: column; }
+      footer { flex-direction: column; gap: 20px; text-align: center; }
+      .footer-links { flex-wrap: wrap; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="#" class="nav-logo">Cronkite<span>.</span></a>
+    <ul class="nav-links">
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#daily-briefing">Daily Briefing</a></li>
+      <li><a href="#privacy">Privacy</a></li>
+      <li><a href="#contact" class="nav-cta">Request a demo</a></li>
+    </ul>
+    <div class="nav-login">
+      <a href="https://cronkite-backend-production.up.railway.app/student" class="btn-login-student">Student Login</a>
+      <a href="https://cronkite-backend-production.up.railway.app/teacher" class="btn-login-teacher">Teacher Login</a>
+    </div>
+  </nav>
+  <section class="hero">
+    <div class="hero-left">
+      <div class="hero-eyebrow">For UK Secondary Schools</div>
+      <h1>Teach students to <em>read</em> the news, not just consume it</h1>
+      <p class="hero-sub">Cronkite is an AI-powered media literacy platform. Teachers assign real articles and videos. Students receive scholar-grade analysis — bias, persuasion techniques, credibility scores — in seconds.</p>
+      <div class="hero-actions">
+        <a href="#contact" class="btn-primary">Request a demo</a>
+        <a href="#how-it-works" class="btn-secondary">See how it works</a>
+      </div>
+      <div class="hero-trust">
+        <p>Aligned with</p>
+        <div class="trust-badges">
+          <span class="trust-badge">Ofcom Media Literacy Strategy</span>
+          <span class="trust-badge">DfE Curriculum</span>
+          <span class="trust-badge">UK GDPR</span>
+          <span class="trust-badge">Ofsted EIF</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="mockup-card">
+        <div class="mockup-header">
+          <span class="mockup-logo">Cronkite<span>.</span></span>
+          <span class="mockup-tag">Analysis Report</span>
+        </div>
+        <div class="mockup-body">
+          <div class="mockup-url">https://theguardian.com/politics/2026/...</div>
+          <div class="mockup-headline">"Government's bold new plan to fix Britain's economy"</div>
+          <div class="mockup-score-row">
+            <div class="score-chip amber"><span class="label">Credibility</span><span class="value">6.2</span></div>
+            <div class="score-chip red"><span class="label">Bias Score</span><span class="value">High</span></div>
+            <div class="score-chip"><span class="label">Source</span><span class="value" style="font-size:0.8rem;font-family:'DM Sans'">Left-Centre</span></div>
+          </div>
+          <div class="mockup-section">
+            <div class="mockup-section-label">Persuasion Techniques</div>
+            <span class="technique-tag red">Loaded language</span>
+            <span class="technique-tag amber">Appeal to authority</span>
+            <span class="technique-tag blue">False dichotomy</span>
+            <span class="technique-tag red">Weasel words</span>
+          </div>
+          <div class="mockup-section">
+            <div class="mockup-section-label">Bias Direction</div>
+            <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-muted);margin-bottom:4px"><span>Left</span><span>Centre</span><span>Right</span></div>
+            <div class="mockup-bias-bar"><div class="mockup-bias-fill" style="width:30%;background:linear-gradient(90deg,#1E4FC4,#4A7FE8)"></div></div>
+          </div>
+        </div>
+        <div class="mockup-footer">
+          <span class="mockup-footer-text">Ready to assign to a module</span>
+          <button class="mockup-assign-btn">Assign →</button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="how" id="how-it-works">
+    <div class="how-inner">
+      <div class="section-label">How it works</div>
+      <h2>From URL to <em>classroom-ready</em> in 30 seconds</h2>
+      <div class="steps">
+        <div class="step fade-up"><span class="step-num">01</span><h3>Paste any URL</h3><p>Articles, YouTube videos, social media posts — Cronkite analyses any piece of media. No preparation required from the teacher.</p></div>
+        <div class="step fade-up" style="transition-delay:0.15s"><span class="step-num">02</span><h3>AI generates a full report</h3><p>Bias direction, credibility score, persuasion techniques, loaded language, and discussion questions — all in under 30 seconds.</p></div>
+        <div class="step fade-up" style="transition-delay:0.3s"><span class="step-num">03</span><h3>Assign to your class</h3><p>Add the article to a curriculum module, assign to individual students or a whole class, and track completion from your dashboard.</p></div>
+      </div>
+    </div>
+  </section>
+  <section class="features" id="features">
+    <div class="features-inner">
+      <div class="section-label">Features</div>
+      <h2>Everything a media literacy lesson needs — built in</h2>
+      <div class="features-grid">
+        <div class="feature fade-up"><div class="feature-icon">📰</div><h3>Article &amp; Video Analysis</h3><p>Paste a news article, YouTube video or social media post. Cronkite returns a full scholarly analysis — bias, persuasion techniques, credibility indicators — instantly.</p></div>
+        <div class="feature fade-up" style="transition-delay:0.1s"><div class="feature-icon">📋</div><h3>Teacher Module System</h3><p>Create curriculum-aligned modules (KS3, KS4), curate articles, and assign them to students with custom instructions and due dates.</p></div>
+        <div class="feature fade-up" style="transition-delay:0.2s"><div class="feature-icon">🎓</div><h3>Student Dashboard</h3><p>Students log in with school Google accounts, view assigned content, read the original article, and review the AI analysis — all in one place.</p></div>
+        <div class="feature fade-up" style="transition-delay:0.3s"><div class="feature-icon">🎬</div><h3>YouTube Transcript Analysis</h3><p>The only platform that analyses video content for schools. Cronkite extracts and analyses the spoken content of any YouTube video for rhetorical devices and credibility signals.</p></div>
+        <div class="feature fade-up" style="transition-delay:0.1s"><div class="feature-icon">📊</div><h3>Teacher Reporting</h3><p>Track which students have completed assignments, how they engaged with the analysis, and generate evidence for Ofsted inspection.</p></div>
+        <div class="feature fade-up" style="transition-delay:0.2s"><div class="feature-icon">🔒</div><h3>Safe for Schools</h3><p>Google OAuth login, GDPR-compliant data handling, no student data used for AI training, and a safeguarding-first architecture. No third-party data sharing.</p></div>
+      </div>
+    </div>
+  </section>
+  <section class="briefing" id="daily-briefing">
+    <div class="briefing-inner">
+      <div>
+        <div class="section-label">Daily Briefing</div>
+        <h2>The morning news, <em>analysed</em> before registration</h2>
+        <p class="briefing-desc">Every morning at 8:30am, subscribed schools receive the Cronkite Daily Briefing — a curated, AI-analysed digest of the day's top UK stories, ready to use in form time or first lesson.</p>
+        <div class="briefing-features">
+          <div class="briefing-feature">Cronkite Coverage: neutral summaries across International Conflicts, Domestic Politics, Business and Economics, Social and Cultural Issues, Technology and AI</div>
+          <div class="briefing-feature">Business of Bias: the five most biased headlines of the day, explained</div>
+          <div class="briefing-feature">No lesson prep required — arrives ready to use</div>
+          <div class="briefing-feature">Links directly into Cronkite modules for assignment</div>
+        </div>
+      </div>
+      <div class="briefing-card fade-up">
+        <div class="briefing-card-header">
+          <span>Cronkite<em>.</em> Daily Briefing</span>
+          <span class="briefing-card-date">Tuesday, 24 March 2026</span>
+        </div>
+        <div class="briefing-section">
+          <div class="briefing-section-label">Cronkite Coverage — Domestic Politics</div>
+          <div class="briefing-item">
+            <div class="briefing-item-head">Chancellor Rachel Reeves confirms June spending review date</div>
+            <div class="briefing-item-body">The Treasury will set out departmental budgets on 11 June, with NHS and defence expected to receive priority allocations amid fiscal pressure.</div>
+          </div>
+          <div class="briefing-item">
+            <div class="briefing-item-head">Kemi Badenoch tables emergency debate on asylum backlog</div>
+            <div class="briefing-item-body">Conservative leader calls for recall of parliament to address record Home Office delays in processing asylum claims, currently exceeding 18 months.</div>
+          </div>
+        </div>
+        <div class="briefing-section">
+          <div class="briefing-section-label">Business of Bias — Today's Five</div>
+          <div class="briefing-item">
+            <div class="bias-row"><span class="bias-source">Daily Mail — "Soft-touch Britain lets migrants flood in"</span><span class="bias-label right">Strong Right</span></div>
+            <div class="briefing-item-body" style="margin-top:4px">Technique: Dehumanising language, fear appeal</div>
+          </div>
+          <div class="briefing-item">
+            <div class="bias-row"><span class="bias-source">The Guardian — "Tory cuts devastate public services"</span><span class="bias-label left">Strong Left</span></div>
+            <div class="briefing-item-body" style="margin-top:4px">Technique: Loaded language, selective framing</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="policy" id="privacy">
+    <div class="policy-inner">
+      <div>
+        <div class="section-label" style="color:rgba(196,30,58,0.8)">Built for schools</div>
+        <h2>Designed around <em>student safety</em> from day one</h2>
+        <p>UK secondary schools have demanding data protection requirements. Cronkite is architected around those requirements, not retrofitted to them. Every decision — from how students log in to how AI analysis is generated — was made with safeguarding and GDPR compliance in mind.</p>
+      </div>
+      <div class="policy-badges">
+        <div class="policy-badge"><div class="policy-badge-icon">🔐</div><div><h4>UK GDPR Compliant</h4><p>Student data is stored in UK-based infrastructure. No student data is shared with third parties or used to train AI models.</p></div></div>
+        <div class="policy-badge"><div class="policy-badge-icon">👤</div><div><h4>Google OAuth Login</h4><p>Students log in with existing school Google accounts. No passwords to manage, no new accounts to create.</p></div></div>
+        <div class="policy-badge"><div class="policy-badge-icon">🛡️</div><div><h4>Safeguarding-First Architecture</h4><p>AI sessions are single-turn with no persistent memory of student interactions. No AI chatbot access for students.</p></div></div>
+        <div class="policy-badge"><div class="policy-badge-icon">📋</div><div><h4>DPA Available on Request</h4><p>A full Data Processing Agreement and DPIA are available for school data protection leads and IT managers.</p></div></div>
+      </div>
+    </div>
+  </section>
+  <section class="login-section" id="login">
+    <div class="section-label" style="justify-content:center;margin-bottom:20px;color:rgba(196,30,58,0.8)">Access Cronkite</div>
+    <h2>Already have an account? <em>Sign in.</em></h2>
+    <p>Use your school Google account to log in instantly — no password required.</p>
+    <div class="login-cards">
+      <a href="https://cronkite-backend-production.up.railway.app/student" class="login-card student">
+        <span class="login-card-icon">🎓</span>
+        <h3>Student Login</h3>
+        <p>View your assigned articles, read analyses, and complete your media literacy tasks.</p>
+        <div class="login-card-arrow">Sign in as student →</div>
+      </a>
+      <a href="https://cronkite-backend-production.up.railway.app/teacher" class="login-card teacher">
+        <span class="login-card-icon">📋</span>
+        <h3>Teacher Login</h3>
+        <p>Manage modules, assign content, analyse articles and videos, and track student progress.</p>
+        <div class="login-card-arrow">Sign in as teacher →</div>
+      </a>
+    </div>
+  </section>
+  <section class="cta" id="contact">
+    <div class="section-label" style="justify-content:center;margin-bottom:20px">Get started</div>
+    <h2>Ready to bring <em>real media</em> into your classroom?</h2>
+    <p>We're working with a small number of pilot schools in 2026. Request a demo and we'll be in touch within 48 hours.</p>
+    <div class="cta-form">
+      <input type="email" class="cta-input" placeholder="Your school email address" />
+      <a href="mailto:csestap@gmail.com" class="btn-primary">Request demo</a>
+    </div>
+    <p class="cta-note">Or email us directly at <a href="mailto:csestap@gmail.com" style="color:var(--red);text-decoration:none">csestap@gmail.com</a></p>
+  </section>
+  <footer>
+    <span class="footer-logo">Cronkite<span>.</span></span>
+    <ul class="footer-links">
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#privacy">Privacy</a></li>
+      <li><a href="#login">Login</a></li>
+      <li><a href="mailto:csestap@gmail.com">Contact</a></li>
+    </ul>
+    <span class="footer-copy">© 2026 Cronkite. All rights reserved.</span>
+  </footer>
+  <script>
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
+    }, { threshold: 0.15 });
+    document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+  </script>
+</body>
+</html>
