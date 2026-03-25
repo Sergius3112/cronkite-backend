@@ -4,11 +4,25 @@ const loadingText = document.getElementById('loadingText');
 const errorBox = document.getElementById('errorBox');
 const serverDot = document.getElementById('serverDot');
 const serverStatus = document.getElementById('serverStatus');
+const mainContent = document.getElementById('mainContent');
+const loginPrompt = document.getElementById('loginPrompt');
 
-// Check if backend server is running
+const API_BASE = 'https://cronkite-backend-production.up.railway.app';
+const STORAGE_KEY = 'sb-givyodepnqelhhmtmypk-auth-token';
+
+// Retrieve Supabase access token from chrome.storage.local.
+// The content script syncs it there from localStorage when the user visits the Cronkite app.
+async function getAuthToken() {
+  const result = await chrome.storage.local.get(STORAGE_KEY);
+  const authData = result[STORAGE_KEY];
+  if (!authData) return null;
+  // Supabase v2 stores the session object directly: { access_token, refresh_token, ... }
+  return authData.access_token || authData?.currentSession?.access_token || null;
+}
+
 async function checkServer() {
   try {
-    const res = await fetch('https://cronkite-backend-production.up.railway.app/health', { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       serverDot.classList.remove('offline');
       serverStatus.textContent = 'Server online';
@@ -17,7 +31,7 @@ async function checkServer() {
     }
   } catch {
     serverDot.classList.add('offline');
-    serverStatus.textContent = 'Server offline — start backend first';
+    serverStatus.textContent = 'Server offline';
     analyzeBtn.disabled = true;
   }
 }
@@ -40,89 +54,77 @@ function showError(msg) {
   hideLoading();
 }
 
+function showLoginState() {
+  mainContent.style.display = 'none';
+  loginPrompt.style.display = 'block';
+  serverDot.classList.remove('offline');
+  serverStatus.textContent = 'Not signed in';
+}
+
+function showMainState() {
+  mainContent.style.display = 'block';
+  loginPrompt.style.display = 'none';
+}
+
+async function init() {
+  const token = await getAuthToken();
+  if (!token) {
+    showLoginState();
+    return;
+  }
+  showMainState();
+  checkServer();
+}
+
 analyzeBtn.addEventListener('click', async () => {
   errorBox.style.display = 'none';
 
-  // Get active tab
+  const token = await getAuthToken();
+  if (!token) {
+    showLoginState();
+    return;
+  }
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-  showLoading('Extracting article text...');
+  showLoading('Sending to Cronkite…');
 
-  // Inject content script to extract text and show sidebar
   try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: extractArticleText
+    const response = await fetch(`${API_BASE}/api/analyse`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ url: tab.url }),
     });
 
-    const articleText = results[0].result;
-
-    if (!articleText || articleText.length < 100) {
-      showError('Could not find enough article text on this page. Try navigating to a news article.');
+    if (response.status === 401) {
+      // Token expired or invalid — clear storage and show login
+      await chrome.storage.local.remove(STORAGE_KEY);
+      showLoginState();
       return;
     }
 
-    showLoading('Sending to fact-checker (this may take 20–40s)...');
-
-    // Call our backend
-    const response = await fetch('https://cronkite-backend-production.up.railway.app/analyse', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: articleText, url: tab.url })
-    });
-
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.detail || 'Server error');
+      const err = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(err.detail || 'Analysis failed');
     }
 
     const data = await response.json();
 
-    showLoading('Displaying results...');
+    showLoading('Displaying results…');
 
-    // Send results to content script to show sidebar
     await chrome.tabs.sendMessage(tab.id, {
       action: 'showSidebar',
-      data: data
+      data: data,
     });
 
-    // Close popup
     window.close();
 
   } catch (err) {
-    if (err.message.includes('fetch')) {
-      showError('Cannot connect to backend. Make sure you ran: uvicorn main:app --reload');
-    } else {
-      showError(err.message);
-    }
+    showError(err.message || 'Analysis failed');
   }
 });
 
-// Extracts article text from the page — runs inside the tab
-function extractArticleText() {
-  // Try common article selectors first
-  const selectors = [
-    'article',
-    '[role="main"]',
-    '.article-body',
-    '.story-body',
-    '.post-content',
-    '.entry-content',
-    '.article-content',
-    'main'
-  ];
-
-  for (const sel of selectors) {
-    const el = document.querySelector(sel);
-    if (el) {
-      const text = el.innerText.trim();
-      if (text.length > 200) return text;
-    }
-  }
-
-  // Fallback: get all paragraph text
-  const paragraphs = Array.from(document.querySelectorAll('p'));
-  return paragraphs.map(p => p.innerText.trim()).filter(t => t.length > 40).join('\n\n');
-}
-
-checkServer();
+init();

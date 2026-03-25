@@ -6,7 +6,7 @@
   <title>Cronkite</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -18,9 +18,9 @@
     }
 
     .header {
-      background: #0a0a0a;
+      background: #1A1714;
       padding: 16px 18px;
-      border-bottom: 2px solid #c8102e;
+      border-bottom: 2px solid #C41E3A;
       display: flex;
       align-items: center;
       gap: 10px;
@@ -39,12 +39,13 @@
 
     .brand p {
       font-size: 10px;
-      color: #c8102e;
+      color: #C41E3A;
       letter-spacing: 1.2px;
       text-transform: uppercase;
       margin-top: 1px;
     }
 
+    /* ── Main content (shown when authenticated) ── */
     .content { padding: 18px; }
 
     .intro-card {
@@ -67,7 +68,7 @@
     .btn-ask {
       width: 100%;
       padding: 13px;
-      background: #c8102e;
+      background: #C41E3A;
       color: #f5f0e8;
       border: none;
       border-radius: 8px;
@@ -78,7 +79,7 @@
       letter-spacing: 0.2px;
     }
 
-    .btn-ask:hover { background: #a50d26; transform: translateY(-1px); }
+    .btn-ask:hover { background: #a5192f; transform: translateY(-1px); }
     .btn-ask:active { transform: translateY(0); }
     .btn-ask:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
 
@@ -87,7 +88,7 @@
     .spinner-ring {
       width: 32px; height: 32px;
       border: 2px solid #c5b89a;
-      border-top-color: #c8102e;
+      border-top-color: #C41E3A;
       border-radius: 50%;
       animation: spin 0.9s linear infinite;
       margin: 0 auto 10px;
@@ -104,10 +105,74 @@
       padding: 12px;
       margin-top: 12px;
       font-size: 12px;
-      color: #c8102e;
+      color: #C41E3A;
       line-height: 1.5;
     }
 
+    /* ── Login prompt (shown when not authenticated) ── */
+    .login-prompt {
+      display: none;
+      padding: 24px 20px;
+      text-align: center;
+    }
+
+    .login-prompt-icon {
+      width: 48px; height: 48px;
+      background: rgba(196,30,58,0.1);
+      border: 1px solid rgba(196,30,58,0.2);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 20px;
+    }
+
+    .login-prompt h2 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 17px;
+      font-weight: 700;
+      color: #1A1714;
+      margin-bottom: 8px;
+      line-height: 1.2;
+    }
+
+    .login-prompt p {
+      font-size: 12px;
+      color: #7d6e56;
+      line-height: 1.6;
+      margin-bottom: 20px;
+      font-weight: 300;
+    }
+
+    .btn-login {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      background: #1A1714;
+      color: #f5f0e8;
+      border: 1px solid #C41E3A;
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.2s;
+      letter-spacing: 0.2px;
+      margin-bottom: 10px;
+    }
+
+    .btn-login:hover { background: #C41E3A; }
+
+    .login-note {
+      font-size: 10px;
+      color: #9ca3af;
+      line-height: 1.5;
+    }
+
+    /* ── Footer ── */
     .footer {
       padding: 10px 18px;
       border-top: 1px solid #c5b89a;
@@ -124,7 +189,7 @@
     }
 
     .status-dot { width: 5px; height: 5px; border-radius: 50%; background: #2d6a4f; flex-shrink: 0; }
-    .status-dot.offline { background: #c8102e; }
+    .status-dot.offline { background: #C41E3A; }
   </style>
 </head>
 <body>
@@ -132,24 +197,39 @@
     <div class="logo-wrap"><img src="icons_white/icon128.png" alt="Cronkite"></div>
     <div class="brand">
       <h1>Cronkite</h1>
-      <p>Trusted News Intelligence</p>
+      <p>Media Literacy</p>
     </div>
   </div>
-  <div class="content">
+
+  <!-- Authenticated state -->
+  <div id="mainContent" class="content">
     <div class="intro-card">
-      <p>Click <strong>Ask Cronkite</strong> to analyse this article's claims against live sources.</p>
+      <p>Click <strong>Analyse this page</strong> to generate a full media literacy report for the current article or video.</p>
     </div>
-    <button class="btn-ask" id="analyzeBtn">Ask Cronkite</button>
+    <button class="btn-ask" id="analyzeBtn">Analyse this page</button>
     <div class="loading" id="loading">
       <div class="spinner-ring"></div>
-      <div class="loading-text" id="loadingText">Extracting article text...</div>
+      <div class="loading-text" id="loadingText">Sending to Cronkite…</div>
     </div>
     <div class="error" id="errorBox"></div>
   </div>
+
+  <!-- Unauthenticated state -->
+  <div id="loginPrompt" class="login-prompt">
+    <div class="login-prompt-icon">🔐</div>
+    <h2>Sign in to Cronkite</h2>
+    <p>Log in to your teacher account to analyse articles and videos with AI-powered media literacy reports.</p>
+    <a href="https://cronkite-backend-production.up.railway.app/teacher" target="_blank" class="btn-login">
+      Sign in as Teacher →
+    </a>
+    <p class="login-note">After signing in, click the Cronkite icon again to analyse this page.</p>
+  </div>
+
   <div class="footer">
     <span class="status-dot" id="serverDot"></span>
-    <span id="serverStatus">Checking server...</span>
+    <span id="serverStatus">Checking server…</span>
   </div>
+
   <script src="popup.js"></script>
 </body>
 </html>
