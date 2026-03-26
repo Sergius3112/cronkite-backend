@@ -583,7 +583,7 @@ async def serve_student():
 
 @app.get("/auth/callback")
 async def auth_callback():
-    return RedirectResponse(url="/teacher")
+    return FileResponse(_DIST / "index.html")
 
 @app.get("/app")
 async def serve_app():
