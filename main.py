@@ -575,11 +575,11 @@ async def serve_root():
 
 @app.get("/teacher")
 async def serve_teacher():
-    return FileResponse(BASE_DIR / "teacher.html")
+    return FileResponse(_DIST / "index.html")
 
 @app.get("/student")
 async def serve_student():
-    return FileResponse(BASE_DIR / "student.html")
+    return FileResponse(_DIST / "index.html")
 
 @app.get("/auth/callback")
 async def auth_callback():
