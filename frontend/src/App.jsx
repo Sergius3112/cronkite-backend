@@ -11,6 +11,7 @@ import Articles from './pages/Articles'
 import Reports from './pages/Reports'
 import Updates from './pages/Updates'
 import StudentModules from './pages/StudentModules'
+import ForYou from './pages/ForYou'
 
 function Shell({ children }) {
   return <AppLayout>{children}</AppLayout>
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/reports"  element={<Shell><Reports /></Shell>} />
         <Route path="/updates"          element={<Shell><Updates /></Shell>} />
         <Route path="/student/modules"  element={<Shell><StudentModules /></Shell>} />
+        <Route path="/for-you"          element={<Shell><ForYou /></Shell>} />
         <Route path="*"        element={<Navigate to="/" replace />} />
       </Routes>
     </TooltipProvider>

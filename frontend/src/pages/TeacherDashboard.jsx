@@ -176,19 +176,21 @@ export default function TeacherDashboard() {
   }
 
   const firstName = (session?.user?.user_metadata?.full_name || session?.user?.email || '').split(' ')[0]
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Welcome */}
         <div className="mb-6">
           <h2 className="font-serif text-2xl text-ink">
-            {firstName ? `Welcome back, ${firstName}` : 'Your Dashboard'}
+            {firstName ? `${greeting}, ${firstName}` : 'Your Dashboard'}
           </h2>
           <p className="text-xs text-ink-light mt-1">Manage modules, assign articles, review results.</p>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
           <StatCard label="Active Modules"    value={stats.modules}     />
           <StatCard label="Articles"          value={stats.articles}    />
           <StatCard label="Total Assignments" value={stats.assignments} />
@@ -197,7 +199,7 @@ export default function TeacherDashboard() {
         </div>
 
         {/* Create Module */}
-        <section className="bg-paper-dark border border-border rounded-xl p-6 mb-8">
+        <section className="bg-paper-dark border border-border rounded-xl p-5 mb-6">
           <h3 className="text-xs font-semibold text-ink-light uppercase tracking-widest mb-4">New Module</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <Field label="Module Name">
@@ -397,9 +399,9 @@ function ModuleCard({ mod, expanded, assignments, results, onToggle, onAddAssign
 
 function StatCard({ label, value, red }) {
   return (
-    <div className="bg-paper-dark border border-border rounded-xl p-4">
-      <p className="text-[10px] font-semibold text-ink-light uppercase tracking-widest mb-1">{label}</p>
-      <p className={`font-serif text-3xl leading-none ${red ? 'text-red' : 'text-ink'}`}>{value}</p>
+    <div style={{ background: '#1A1714', borderRadius: '10px', padding: '14px 16px' }}>
+      <p style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.6px', color: '#9E9488', marginBottom: '5px' }}>{label}</p>
+      <p style={{ fontFamily: "'Playfair Display', serif", fontSize: '26px', fontWeight: 700, color: red ? 'rgb(196,30,58)' : '#F7F3EC', letterSpacing: '-1px', lineHeight: 1 }}>{value}</p>
     </div>
   )
 }
@@ -424,7 +426,7 @@ function StatusBadge({ status }) {
 }
 
 function SectionHd({ children }) {
-  return <h3 className="text-[10px] font-semibold text-ink-light uppercase tracking-widest mb-3 pb-2 border-b border-border">{children}</h3>
+  return <h3 style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.7px', color: '#B0A89E', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(26,23,20,0.06)' }}>{children}</h3>
 }
 
 function InlineError({ msg, onRetry }) {

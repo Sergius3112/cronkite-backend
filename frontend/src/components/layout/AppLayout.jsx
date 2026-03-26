@@ -5,15 +5,19 @@ import { sb } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, BookOpen, Newspaper,
-  BarChart3, Sparkles, Inbox, LogOut, Menu,
+  BarChart3, Sparkles, Inbox, LogOut, Menu, Users, FileText,
 } from 'lucide-react'
 
-const TEACHER_NAV = [
-  { label: 'Dashboard',     href: '/teacher',  icon: LayoutDashboard },
-  { label: 'Modules',       href: '/modules',  icon: BookOpen        },
-  { label: 'Articles',      href: '/articles', icon: Newspaper       },
-  { label: 'Reports',       href: '/reports',  icon: BarChart3       },
-  { label: 'Updates',       href: '/updates',  icon: Sparkles        },
+const TEACHER_NAV_WORKSPACE = [
+  { label: 'Overview',        href: '/teacher',   icon: LayoutDashboard },
+  { label: 'Analyse Content', href: '/articles',  icon: Newspaper },
+  { label: 'Modules',         href: '/modules',   icon: BookOpen },
+  { label: 'Students',        href: '/reports',   icon: Users },
+]
+
+const TEACHER_NAV_CONTENT = [
+  { label: 'Daily Briefing',  href: '/updates',   icon: FileText },
+  { label: 'For You',         href: '/for-you',   icon: Sparkles },
 ]
 
 const STUDENT_NAV = [
@@ -23,30 +27,8 @@ const STUDENT_NAV = [
 
 function CronkiteWordmark() {
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-      <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <rect x="2" y="4" width="28" height="24" rx="2" stroke="#2d6a4f" strokeWidth="2.5" fill="none"/>
-        <rect x="6" y="9" width="12" height="2" rx="1" fill="#2d6a4f"/>
-        <rect x="6" y="13" width="20" height="2" rx="1" fill="#2d6a4f"/>
-        <rect x="6" y="17" width="20" height="2" rx="1" fill="#2d6a4f"/>
-        <rect x="6" y="21" width="14" height="2" rx="1" fill="#2d6a4f"/>
-      </svg>
-      <span
-        aria-label="Cronkite"
-        style={{ fontFamily: 'Playfair Display, serif', fontSize: '22px', fontWeight: 700, color: '#1a1a1a', position: 'relative', lineHeight: 1 }}
-      >
-        {'Cronk'}
-        <span style={{ position: 'relative', display: 'inline-block' }}>
-          {'\u0131'}
-          <span
-            aria-hidden="true"
-            style={{ position: 'absolute', top: '-6px', left: '50%', transform: 'translateX(-50%)', color: '#2d6a4f', fontSize: '10px', lineHeight: 1 }}
-          >
-            ✱
-          </span>
-        </span>
-        {'te'}
-      </span>
+    <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '22px', fontWeight: 700, color: '#1A1714', letterSpacing: '-0.4px' }}>
+      Cronkite<span style={{ color: 'rgb(196,30,58)' }}>.</span>
     </span>
   )
 }
@@ -79,7 +61,7 @@ export function AppLayout({ children }) {
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-5 h-14 border-b border-border shrink-0">
           <Link
-            to={isStudentRoute ? '/student' : '/modules'}
+            to={isStudentRoute ? '/student' : '/teacher'}
             className="flex items-center min-w-0"
             onClick={() => setMobileOpen(false)}
           >
@@ -88,27 +70,75 @@ export function AppLayout({ children }) {
         </div>
 
         {/* Nav items */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {items.map(({ label, href, icon: Icon }) => {
-            const active = pathname === href
-            return (
-              <Link
-                key={href}
-                to={href}
-                onClick={() => setMobileOpen(false)}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150',
-                  active
-                    ? 'bg-primary/10 text-primary shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted hover:translate-x-0.5'
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
-              </Link>
-            )
-          })}
-        </nav>
+        {isStudentRoute ? (
+          <nav className="flex-1 px-3 py-3 overflow-y-auto">
+            {items.map(({ label, href, icon: Icon }) => {
+              const active = pathname === href
+              return (
+                <Link
+                  key={href}
+                  to={href}
+                  onClick={() => setMobileOpen(false)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '9px',
+                    padding: '8px 12px', fontSize: '13px', borderRadius: '0',
+                    borderLeft: active ? '2px solid rgb(196,30,58)' : '2px solid transparent',
+                    background: active ? '#F7F3EC' : 'transparent',
+                    color: active ? '#1A1714' : '#7A746E',
+                    fontWeight: active ? 500 : 400,
+                    textDecoration: 'none', transition: 'all 0.1s',
+                  }}
+                >
+                  <Icon style={{ width: '14px', height: '14px', flexShrink: 0 }} />
+                  {label}
+                </Link>
+              )
+            })}
+          </nav>
+        ) : (
+          <nav className="flex-1 px-3 py-3 overflow-y-auto">
+            <p style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#B0A89E', padding: '12px 12px 5px' }}>Workspace</p>
+            {TEACHER_NAV_WORKSPACE.map(({ label, href, icon: Icon }) => {
+              const active = pathname === href
+              return (
+                <Link key={href} to={href} onClick={() => setMobileOpen(false)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '9px',
+                    padding: '8px 12px', fontSize: '13px', borderRadius: '0',
+                    borderLeft: active ? '2px solid rgb(196,30,58)' : '2px solid transparent',
+                    background: active ? '#F7F3EC' : 'transparent',
+                    color: active ? '#1A1714' : '#7A746E',
+                    fontWeight: active ? 500 : 400,
+                    textDecoration: 'none', transition: 'all 0.1s',
+                  }}
+                >
+                  <Icon style={{ width: '14px', height: '14px', flexShrink: 0 }} />
+                  {label}
+                </Link>
+              )
+            })}
+            <p style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#B0A89E', padding: '14px 12px 5px' }}>Content</p>
+            {TEACHER_NAV_CONTENT.map(({ label, href, icon: Icon }) => {
+              const active = pathname === href
+              return (
+                <Link key={href} to={href} onClick={() => setMobileOpen(false)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '9px',
+                    padding: '8px 12px', fontSize: '13px', borderRadius: '0',
+                    borderLeft: active ? '2px solid rgb(196,30,58)' : '2px solid transparent',
+                    background: active ? '#F7F3EC' : 'transparent',
+                    color: active ? '#1A1714' : '#7A746E',
+                    fontWeight: active ? 500 : 400,
+                    textDecoration: 'none', transition: 'all 0.1s',
+                  }}
+                >
+                  <Icon style={{ width: '14px', height: '14px', flexShrink: 0 }} />
+                  {label}
+                </Link>
+              )
+            })}
+          </nav>
+        )}
 
         {/* User row */}
         <div className="px-3 pb-4 border-t border-border pt-3 shrink-0">
