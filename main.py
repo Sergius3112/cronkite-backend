@@ -1710,6 +1710,21 @@ async def briefing_by_id(briefing_id: str):
         return HTMLResponse(content=_NO_BRIEFING_HTML, status_code=404)
 
 
+@app.get("/api/daily-briefings")
+async def list_daily_briefings():
+    try:
+        svc_url = os.getenv('SUPABASE_URL', '')
+        svc_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+        if not svc_url or not svc_key:
+            return JSONResponse({"briefings": []})
+        svc = create_client(svc_url, svc_key)
+        result = svc.table('daily_briefings').select('id, date').order('date', desc=True).execute()
+        return JSONResponse({"briefings": result.data or []})
+    except Exception as e:
+        logger.error(f"Error fetching daily briefings: {e}")
+        return JSONResponse({"briefings": []})
+
+
 @app.get("/briefing/latest")
 async def briefing_latest():
     """Redirect to the most recent briefing by fetching latest UUID from Supabase."""
