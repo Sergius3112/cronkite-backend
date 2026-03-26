@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel
@@ -1713,6 +1713,7 @@ async def briefing_by_id(briefing_id: str):
 @app.get("/api/daily-briefings")
 async def list_daily_briefings():
     try:
+        from supabase import create_client
         svc_url = os.getenv('SUPABASE_URL', '')
         svc_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
         if not svc_url or not svc_key:
