@@ -15,6 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
 COPY cronkite-edu.html .
+COPY teacher.html .
+COPY student.html .
 
 # Copy built React app
 COPY --from=frontend-builder /frontend/dist ./frontend/dist
