@@ -48,7 +48,7 @@ export function AppLayout({ children }) {
 
   // Nav is determined entirely by the current route
   const isStudentRoute = pathname === '/student' || pathname.startsWith('/student/')
-  const items = isStudentRoute ? STUDENT_NAV : TEACHER_NAV
+  const items = STUDENT_NAV
 
   async function signOut() {
     await sb.auth.signOut()
