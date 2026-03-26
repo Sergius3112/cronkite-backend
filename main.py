@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel
@@ -575,11 +575,15 @@ async def serve_root():
 
 @app.get("/teacher")
 async def serve_teacher():
-    return FileResponse(_DIST / "index.html")
+    return FileResponse(BASE_DIR / "teacher.html")
 
 @app.get("/student")
 async def serve_student():
-    return FileResponse(_DIST / "index.html")
+    return FileResponse(BASE_DIR / "student.html")
+
+@app.get("/auth/callback")
+async def auth_callback():
+    return RedirectResponse(url="/teacher")
 
 @app.get("/app")
 async def serve_app():
