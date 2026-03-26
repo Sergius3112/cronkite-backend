@@ -464,6 +464,10 @@
     const { createClient } = supabase;
     const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    if (window.location.hash.includes('access_token')) {
+      window.history.replaceState({}, document.title, '/student');
+    }
+
     // ── Toast ──
     function toast(msg, type = 'ok') {
       const el = document.getElementById('toast');
