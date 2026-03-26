@@ -7,7 +7,7 @@ const serverStatus = document.getElementById('serverStatus');
 const mainContent = document.getElementById('mainContent');
 const loginPrompt = document.getElementById('loginPrompt');
 
-const API_BASE = 'https://cronkite-backend-production.up.railway.app';
+const API_BASE = 'https://cronkite.education';
 const STORAGE_KEY = 'sb-givyodepnqelhhmtmypk-auth-token';
 
 // Retrieve Supabase access token from chrome.storage.local.

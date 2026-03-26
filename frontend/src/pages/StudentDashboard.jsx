@@ -13,7 +13,7 @@ const FOCUS_LABELS = {
   managing_information:  'Managing Information',
 }
 
-const CRONKITE_APP = 'https://cronkite-backend-production.up.railway.app/app'
+const CRONKITE_APP = 'https://cronkite.education/app'
 
 export default function StudentDashboard() {
   const navigate = useNavigate()

@@ -20,7 +20,7 @@ const MOCK_SUGGESTIONS: Record<string, SuggestedArticle[]> = {
   ],
 };
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://cronkite-backend-production.up.railway.app';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://cronkite.education';
 
 export function useSuggestions(modules: Module[]) {
   const [suggestions, setSuggestions] = useState<Record<string, SuggestedArticle[]>>({});

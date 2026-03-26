@@ -2,7 +2,7 @@
 // This runs on every page load — when the user visits the Cronkite app while logged in,
 // their session token is copied to chrome.storage so the popup can read it.
 (function syncAuthToken() {
-  const CRONKITE_HOST = 'cronkite-backend-production.up.railway.app';
+  const CRONKITE_HOST = 'cronkite.education';
   if (window.location.hostname !== CRONKITE_HOST) return;
   const KEY = 'sb-givyodepnqelhhmtmypk-auth-token';
   const raw = localStorage.getItem(KEY);
