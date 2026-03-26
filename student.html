@@ -700,21 +700,6 @@
       d.appendChild(document.createTextNode(String(text)));
       return d.innerHTML;
     }
-
-    // ── Boot: check for existing session immediately on page load ─────────────
-    sb.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        currentUser = session.user;
-        document.getElementById('auth-screen').style.display = 'none';
-        document.getElementById('app-screen').style.display = 'block';
-        document.getElementById('user-name-display').textContent =
-          session.user.user_metadata?.full_name || session.user.email;
-        loadInbox();
-      } else {
-        document.getElementById('auth-screen').style.display = 'flex';
-        document.getElementById('app-screen').style.display = 'none';
-      }
-    });
   </script>
 </body>
 </html>

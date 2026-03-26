@@ -137,7 +137,6 @@
     .btn-primary { background: var(--red); color: var(--paper); }
     .btn-primary:hover { background: var(--red-dark); transform: translateY(-1px); }
     .btn-primary:active { transform: none; }
-    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
     .btn-outline {
       background: transparent;
@@ -145,6 +144,15 @@
       border: 1px solid var(--border);
     }
     .btn-outline:hover { border-color: var(--ink); color: var(--ink); }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--ink-light);
+      border: none;
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .btn-ghost:hover { color: var(--ink); }
 
     .btn-danger {
       background: transparent;
@@ -186,69 +194,18 @@
       padding: 32px 24px;
     }
 
-    .welcome-row {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      margin-bottom: 24px;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .welcome-row h2 {
+    .page-title {
       font-family: 'Playfair Display', Georgia, serif;
       font-size: 22px;
       color: var(--ink);
+      margin-bottom: 4px;
     }
 
-    .welcome-row p {
+    .page-subtitle {
       font-size: 12px;
       color: var(--ink-light);
-    }
-
-    /* ── Stats strip ── */
-    .stats-strip {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
+      letter-spacing: 0.5px;
       margin-bottom: 28px;
-    }
-
-    .stat-card {
-      background: var(--paper-dark);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px 18px;
-    }
-
-    .stat-label {
-      font-size: 10px;
-      font-weight: 600;
-      color: var(--ink-light);
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      margin-bottom: 6px;
-    }
-
-    .stat-value {
-      font-family: 'Playfair Display', Georgia, serif;
-      font-size: 28px;
-      color: var(--ink);
-      line-height: 1;
-    }
-
-    .stat-value.red { color: var(--red); }
-
-    /* ── Section header ── */
-    .section-hd {
-      font-size: 10px;
-      font-weight: 600;
-      color: var(--ink-light);
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      margin-bottom: 14px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
     }
 
     /* ── Create Module Form ── */
@@ -260,7 +217,14 @@
       margin-bottom: 32px;
     }
 
-    .create-section > .section-hd { border-bottom: none; padding-bottom: 0; margin-bottom: 16px; }
+    .create-section h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-light);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 16px;
+    }
 
     .form-grid {
       display: grid;
@@ -296,24 +260,16 @@
       width: 100%;
     }
 
-    input:focus, textarea:focus, select:focus { border-color: var(--ink); }
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--ink);
+    }
+
     textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
 
-    .form-actions {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .form-error {
-      font-size: 12px;
-      color: var(--red);
-      flex: 1;
-    }
+    .form-actions { display: flex; justify-content: flex-end; }
 
     /* ── Module Cards ── */
-    .modules-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 32px; }
+    .modules-list { display: flex; flex-direction: column; gap: 16px; }
 
     .module-card {
       background: var(--paper-dark);
@@ -326,7 +282,7 @@
       display: flex;
       align-items: flex-start;
       gap: 12px;
-      padding: 16px 20px;
+      padding: 18px 20px;
       cursor: pointer;
       user-select: none;
     }
@@ -337,9 +293,9 @@
 
     .module-title {
       font-family: 'Playfair Display', Georgia, serif;
-      font-size: 15px;
+      font-size: 16px;
       color: var(--ink);
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
 
     .module-meta {
@@ -347,8 +303,7 @@
       color: var(--ink-light);
       display: flex;
       align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
+      gap: 10px;
     }
 
     .focus-badge {
@@ -363,22 +318,11 @@
       letter-spacing: 0.8px;
     }
 
-    .ks-badge {
-      background: var(--ink);
-      color: var(--paper);
-      border-radius: 4px;
-      padding: 2px 7px;
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
     .module-chevron {
       font-size: 11px;
       color: var(--ink-light);
       transition: transform 0.2s;
-      padding-top: 3px;
+      padding-top: 4px;
       flex-shrink: 0;
     }
 
@@ -387,7 +331,7 @@
     .module-body {
       display: none;
       border-top: 1px solid var(--border);
-      padding: 16px 20px;
+      padding: 18px 20px;
     }
 
     .module-card.expanded .module-body { display: block; }
@@ -396,11 +340,20 @@
       font-size: 12px;
       color: var(--ink-mid);
       line-height: 1.6;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
     }
 
-    /* ── Assignments inside module ── */
-    .assignments-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+    /* ── Assignment list inside module ── */
+    .assignments-section-title {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--ink-light);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 10px;
+    }
+
+    .assignments-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
 
     .assignment-row {
       display: flex;
@@ -421,20 +374,6 @@
       text-overflow: ellipsis;
     }
 
-    .assignment-status {
-      font-size: 10px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 20px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      flex-shrink: 0;
-    }
-
-    .status-assigned   { background: #e0f2fe; color: #0369a1; }
-    .status-in_progress { background: #fef3c7; color: #92400e; }
-    .status-completed  { background: #dcfce7; color: #166534; }
-
     .assignment-url {
       font-size: 11px;
       color: var(--ink-light);
@@ -443,17 +382,24 @@
     }
     .assignment-url:hover { color: var(--red); }
 
-    /* ── Add assignment form ── */
+    .empty-assignments {
+      font-size: 12px;
+      color: var(--ink-light);
+      font-style: italic;
+      margin-bottom: 14px;
+    }
+
+    /* ── Add assignment mini-form ── */
     .add-assignment-form {
       background: var(--paper);
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 14px;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
     }
 
     .add-assignment-form h4 {
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 600;
       color: var(--ink-light);
       text-transform: uppercase;
@@ -470,11 +416,15 @@
     .inline-form-row .form-field { flex: 1; }
 
     /* ── Results table ── */
-    .results-section { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
+    .results-section { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 16px; }
 
     .results-table-wrap { overflow-x: auto; }
 
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
 
     th {
       text-align: left;
@@ -508,56 +458,11 @@
     .score-amber { background: #fef3c7; color: #92400e; }
     .score-red   { background: #fee2e2; color: #991b1b; }
 
-    /* ── Recent assignments ── */
-    .recent-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 0;
-      border-bottom: 1px solid rgba(197,184,154,0.4);
-    }
-
-    .recent-row:last-child { border-bottom: none; }
-
-    .recent-title {
-      flex: 1;
-      font-size: 13px;
-      color: var(--ink);
-      min-width: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .recent-date {
-      font-size: 11px;
+    .no-results {
+      font-size: 12px;
       color: var(--ink-light);
-      flex-shrink: 0;
-    }
-
-    /* ── Inline error block ── */
-    .inline-error {
-      padding: 14px 16px;
-      background: #fdf2f1;
-      border: 1px solid #e8b4b0;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .inline-error strong { font-size: 13px; color: var(--red); }
-    .inline-error code { font-size: 12px; color: var(--ink-mid); white-space: pre-wrap; word-break: break-word; }
-
-    .retry-btn {
-      align-self: flex-start;
-      font: 600 12px/1 'DM Sans', sans-serif;
-      background: var(--red);
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 7px 14px;
-      cursor: pointer;
+      font-style: italic;
+      padding: 8px 0;
     }
 
     /* ── Toast ── */
@@ -580,7 +485,7 @@
     .toast.show { opacity: 1; transform: translateY(0); }
     .toast.error { background: var(--red); }
 
-    /* ── Spinner ── */
+    /* ── Loading overlay ── */
     .spinner {
       display: inline-block;
       width: 14px; height: 14px;
@@ -594,39 +499,32 @@
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .loading-row {
-      padding: 24px;
-      color: var(--ink-light);
-      font-size: 13px;
-    }
-
     .empty-state {
       text-align: center;
-      padding: 40px 24px;
+      padding: 48px 24px;
       color: var(--ink-light);
     }
 
     .empty-state h3 {
       font-family: 'Playfair Display', Georgia, serif;
-      font-size: 17px;
+      font-size: 18px;
       color: var(--ink);
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
 
-    .empty-state p { font-size: 12px; line-height: 1.6; }
+    .empty-state p { font-size: 13px; line-height: 1.6; }
 
     @media (max-width: 640px) {
       .form-grid { grid-template-columns: 1fr; }
       .inline-form-row { flex-direction: column; }
       .site-header { padding: 0 16px; }
       .page-wrap { padding: 20px 16px; }
-      .stats-strip { grid-template-columns: repeat(3, 1fr); }
     }
   </style>
 </head>
 <body>
 
-  <!-- ── Auth Screen ── -->
+  <!-- Auth Screen -->
   <div id="auth-screen">
     <div class="auth-card">
       <h1>Cronkite</h1>
@@ -644,7 +542,7 @@
     </div>
   </div>
 
-  <!-- ── App Screen ── -->
+  <!-- App Screen -->
   <div id="app-screen">
     <header class="site-header">
       <div class="header-brand">
@@ -658,55 +556,26 @@
     </header>
 
     <div class="page-wrap">
+      <h2 class="page-title">Your Modules</h2>
+      <p class="page-subtitle">Create a module, assign articles, then share the link with students.</p>
 
-      <!-- Welcome + stats -->
-      <div class="welcome-row">
-        <h2 id="welcome-msg">Your Dashboard</h2>
-        <p>Manage modules, assign articles, review results.</p>
-      </div>
-
-      <div class="stats-strip">
-        <div class="stat-card">
-          <div class="stat-label">Active Modules</div>
-          <div class="stat-value" id="stat-modules">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Pending Reviews</div>
-          <div class="stat-value red" id="stat-reviews">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Total Assignments</div>
-          <div class="stat-value" id="stat-assignments">—</div>
-        </div>
-      </div>
-
-      <!-- Create Module -->
+      <!-- Create Module Form -->
       <div class="create-section">
-        <div class="section-hd">New Module</div>
+        <h2>New Module</h2>
         <div class="form-grid">
           <div class="form-field">
-            <label for="mod-name">Module Name</label>
-            <input type="text" id="mod-name" placeholder="e.g. Climate Science Claims" />
+            <label for="mod-title">Module Title</label>
+            <input type="text" id="mod-title" placeholder="e.g. Climate Science Claims" />
           </div>
           <div class="form-field">
-            <label for="mod-focus">Focus Area</label>
+            <label for="mod-focus">Focus Point</label>
             <select id="mod-focus">
               <option value="">Select a focus…</option>
-              <option value="evaluating_content">Evaluating Content</option>
-              <option value="persuasion_techniques">Persuasion Techniques</option>
-              <option value="online_behaviour">Online Behaviour</option>
-              <option value="identifying_risks">Identifying Risks</option>
-              <option value="managing_information">Managing Information</option>
-            </select>
-          </div>
-          <div class="form-field">
-            <label for="mod-ks">Key Stage</label>
-            <select id="mod-ks">
-              <option value="">Select a key stage…</option>
-              <option value="ks2">KS2</option>
-              <option value="ks3">KS3</option>
-              <option value="ks4">KS4</option>
-              <option value="ks5">KS5</option>
+              <option value="Online Safety">Online Safety</option>
+              <option value="Misinformation">Misinformation</option>
+              <option value="Bias">Bias</option>
+              <option value="Source Credibility">Source Credibility</option>
+              <option value="Digital Citizenship">Digital Citizenship</option>
             </select>
           </div>
           <div class="form-field full">
@@ -715,30 +584,27 @@
           </div>
         </div>
         <div class="form-actions">
-          <span class="form-error" id="create-error"></span>
           <button class="btn btn-primary" id="create-module-btn">Create Module</button>
         </div>
       </div>
 
-      <!-- Modules list -->
-      <div class="section-hd">Your Modules</div>
-      <div id="modules-list" class="modules-list">
-        <div class="loading-row"><span class="spinner"></span>Loading modules…</div>
+      <!-- Modules List -->
+      <div class="modules-list" id="modules-list">
+        <div class="empty-state" id="modules-empty" style="display:none">
+          <h3>No modules yet</h3>
+          <p>Create your first module above to get started.</p>
+        </div>
       </div>
-
-      <!-- Recent assignments -->
-      <div class="section-hd" style="margin-top:8px">Recent Assignments</div>
-      <div id="recent-assignments">
-        <div class="loading-row"><span class="spinner"></span>Loading…</div>
-      </div>
-
     </div>
   </div>
 
+  <!-- Toast -->
   <div class="toast" id="toast"></div>
 
   <script>
-    const SUPABASE_URL     = 'https://givyodepnqelhhmtmypk.supabase.co';
+    // ── Supabase init ──
+    // Get your anon key from: Supabase Dashboard → Project Settings → API → anon/public
+    const SUPABASE_URL = 'https://givyodepnqelhhmtmypk.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdpdnlvZGVwbnFlbGhobXRteXBrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMzIxODIsImV4cCI6MjA4NzcwODE4Mn0.xqUQLEKfsIs2lxncsYJk7CwkXWat4QCL3xF78ixgnpk';
 
     const { createClient } = supabase;
@@ -753,52 +619,17 @@
       });
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
+    // ── Toast ──
     function toast(msg, type = 'ok') {
       const el = document.getElementById('toast');
       el.textContent = msg;
       el.className = 'toast show' + (type === 'error' ? ' error' : '');
-      clearTimeout(el._t);
-      el._t = setTimeout(() => { el.className = 'toast'; }, 3200);
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => { el.className = 'toast'; }, 3200);
     }
 
-    function esc(text) {
-      const d = document.createElement('div');
-      d.appendChild(document.createTextNode(String(text)));
-      return d.innerHTML;
-    }
-
-    function fmtFocus(val) {
-      const map = {
-        evaluating_content:    'Evaluating Content',
-        persuasion_techniques: 'Persuasion Techniques',
-        online_behaviour:      'Online Behaviour',
-        identifying_risks:     'Identifying Risks',
-        managing_information:  'Managing Information',
-      };
-      return map[val] || val || '';
-    }
-
-    function fmtKS(val) {
-      if (!val) return '';
-      return val.toUpperCase();
-    }
-
-    function fmtDate(ts) {
-      if (!ts) return '—';
-      return new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    }
-
-    function inlineError(msg, retryFn) {
-      return `<div class="inline-error">
-        <strong>Error</strong>
-        <code>${esc(msg)}</code>
-        ${retryFn ? `<button class="retry-btn" onclick="${retryFn}()">Retry</button>` : ''}
-      </div>`;
-    }
-
-    // ── Auth ─────────────────────────────────────────────────────────────────
+    // ── Auth ──
+    let currentUser = null;
 
     document.getElementById('google-login-btn').addEventListener('click', async () => {
       const { error } = await sb.auth.signInWithOAuth({
@@ -813,168 +644,135 @@
       location.reload();
     });
 
-    // ── Boot ─────────────────────────────────────────────────────────────────
-
-    async function boot() {
-      try {
-        const { data: { session }, error } = await sb.auth.getSession();
-        if (error || !session) {
-          document.getElementById('auth-screen').style.display = 'flex';
-          return;
-        }
-        showApp(session);
-      } catch (e) {
-        document.getElementById('auth-screen').style.display = 'flex';
-      }
-    }
-
-    // Also handle mid-session auth changes (OAuth redirect)
-    sb.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        showApp(session);
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        currentUser = session.user;
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('app-screen').style.display = 'block';
+        const name = session.user.user_metadata?.full_name || session.user.email;
+        document.getElementById('user-name-display').textContent = name;
+        await loadModules();
       } else {
-        document.getElementById('app-screen').style.display = 'none';
+        currentUser = null;
         document.getElementById('auth-screen').style.display = 'flex';
+        document.getElementById('app-screen').style.display = 'none';
       }
     });
 
-    function showApp(session) {
-      document.getElementById('auth-screen').style.display = 'none';
-      document.getElementById('app-screen').style.display = 'block';
-      const firstName = (session.user.user_metadata?.full_name || session.user.email || '').split(' ')[0];
-      document.getElementById('user-name-display').textContent =
-        session.user.user_metadata?.full_name || session.user.email;
-      document.getElementById('welcome-msg').textContent =
-        firstName ? `Welcome back, ${firstName}` : 'Your Dashboard';
-      loadDashboard(session);
-    }
-
-    // ── Dashboard ─────────────────────────────────────────────────────────────
-
-    async function loadDashboard(session) {
-      await Promise.all([
-        loadModules(session),
-        loadRecentAssignments(session),
-      ]);
-    }
-
-    // ── Modules ───────────────────────────────────────────────────────────────
-
-    async function loadModules(session) {
+    // ── Modules ──
+    async function loadModules() {
       const list = document.getElementById('modules-list');
-      list.innerHTML = '<div class="loading-row"><span class="spinner"></span>Loading modules…</div>';
+      list.innerHTML = '<div style="padding:24px;color:var(--ink-light);font-size:13px"><span class="spinner"></span>Loading modules…</div>';
 
-      try {
-        const { data, error } = await sb
-          .from('modules')
-          .select('*')
-          .eq('teacher_id', session.user.id)
-          .eq('status', 'active')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        document.getElementById('stat-modules').textContent = data?.length ?? 0;
-
-        if (!data || data.length === 0) {
-          list.innerHTML = '<div class="empty-state"><h3>No active modules</h3><p>Create your first module above.</p></div>';
-          return;
-        }
-
-        list.innerHTML = '';
-        data.forEach(mod => list.appendChild(buildModuleCard(mod)));
-      } catch (e) {
-        console.error('loadModules:', e);
-        list.innerHTML = inlineError(e.message, 'reloadModules');
+      // Re-fetch the session directly so we always have a fresh, valid token
+      const { data: { session }, error: sessionErr } = await sb.auth.getSession();
+      if (sessionErr || !session) {
+        showModuleError(list, sessionErr?.message || 'Session expired — please sign out and sign in again.');
+        return;
       }
-    }
 
-    function reloadModules() {
-      sb.auth.getSession().then(({ data: { session } }) => { if (session) loadModules(session); });
-    }
+      const { data, error } = await sb
+        .from('modules')
+        .select('*')
+        .eq('teacher_id', session.user.id)
+        .order('created_at', { ascending: false });
 
-    // ── Recent Assignments ────────────────────────────────────────────────────
-
-    async function loadRecentAssignments(session) {
-      const el = document.getElementById('recent-assignments');
-      el.innerHTML = '<div class="loading-row"><span class="spinner"></span>Loading…</div>';
-
-      try {
-        const { data, error } = await sb
-          .from('module_assignments')
-          .select('*, modules(name, focus_area)')
-          .order('created_at', { ascending: false })
-          .limit(10);
-
-        if (error) throw error;
-
-        const total = data?.length ?? 0;
-        const pending = (data || []).filter(a => a.status === 'completed').length;
-        document.getElementById('stat-assignments').textContent = total;
-        document.getElementById('stat-reviews').textContent = pending;
-
-        if (!data || data.length === 0) {
-          el.innerHTML = '<div class="empty-state"><p>No assignments yet. Add articles inside a module.</p></div>';
-          return;
-        }
-
-        el.innerHTML = data.map(a => `
-          <div class="recent-row">
-            <div class="recent-title">${esc(a.article_title || a.article_url || a.id)}</div>
-            <span class="assignment-status status-${esc(a.status || 'assigned')}">${esc(a.status || 'assigned')}</span>
-            <span class="recent-date">${fmtDate(a.created_at)}</span>
-          </div>
-        `).join('');
-      } catch (e) {
-        console.error('loadRecentAssignments:', e);
-        el.innerHTML = inlineError(e.message, 'reloadRecent');
+      if (error) {
+        console.error('loadModules query error:', error);
+        showModuleError(list, error.message);
+        return;
       }
+
+      list.innerHTML = '';
+
+      if (!data || data.length === 0) {
+        list.innerHTML = '<div class="empty-state"><h3>No modules yet</h3><p>Create your first module above to get started.</p></div>';
+        return;
+      }
+
+      data.forEach(mod => list.appendChild(buildModuleCard(mod)));
     }
 
-    function reloadRecent() {
-      sb.auth.getSession().then(({ data: { session } }) => { if (session) loadRecentAssignments(session); });
+    function showModuleError(list, msg) {
+      list.innerHTML = `
+        <div style="padding:16px 18px;background:#fdf2f1;border:1px solid #e8b4b0;border-radius:8px;display:flex;flex-direction:column;gap:10px">
+          <span style="font-size:13px;font-weight:600;color:var(--red)">Could not load modules</span>
+          <code style="font-size:12px;color:var(--ink-mid);white-space:pre-wrap;word-break:break-word">${escapeHtml(msg)}</code>
+          <button onclick="loadModules()" style="align-self:flex-start;font:600 12px/1 'DM Sans',sans-serif;background:var(--red);color:#fff;border:none;border-radius:6px;padding:7px 14px;cursor:pointer">Retry</button>
+        </div>`;
     }
 
-    // ── Module Card ───────────────────────────────────────────────────────────
+    async function createModule() {
+      const title = document.getElementById('mod-title').value.trim();
+      const focus = document.getElementById('mod-focus').value;
+      const desc = document.getElementById('mod-desc').value.trim();
 
+      if (!title) { toast('Please enter a module title.', 'error'); return; }
+      if (!focus) { toast('Please select a focus point.', 'error'); return; }
+
+      const btn = document.getElementById('create-module-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Creating…';
+
+      const { error } = await sb.from('modules').insert({
+        teacher_id: currentUser.id,
+        title,
+        description: desc || null,
+        focus_point: focus
+      });
+
+      btn.disabled = false;
+      btn.textContent = 'Create Module';
+
+      if (error) {
+        toast('Error: ' + error.message, 'error');
+        return;
+      }
+
+      document.getElementById('mod-title').value = '';
+      document.getElementById('mod-focus').value = '';
+      document.getElementById('mod-desc').value = '';
+      toast('Module created!');
+      await loadModules();
+    }
+
+    document.getElementById('create-module-btn').addEventListener('click', createModule);
+
+    // ── Module Card ──
     function buildModuleCard(mod) {
       const card = document.createElement('div');
       card.className = 'module-card';
+      card.dataset.id = mod.id;
 
       card.innerHTML = `
         <div class="module-header">
           <div class="module-info">
-            <div class="module-title">${esc(mod.name || mod.title || 'Untitled')}</div>
+            <div class="module-title">${escapeHtml(mod.title)}</div>
             <div class="module-meta">
-              ${mod.focus_area ? `<span class="focus-badge">${esc(fmtFocus(mod.focus_area))}</span>` : ''}
-              ${mod.key_stage  ? `<span class="ks-badge">${esc(fmtKS(mod.key_stage))}</span>` : ''}
-              <span id="acount-${mod.id}"></span>
+              <span class="focus-badge">${escapeHtml(mod.focus_point || '')}</span>
+              <span id="assignment-count-${mod.id}">Loading…</span>
             </div>
           </div>
           <span class="module-chevron">▼</span>
         </div>
         <div class="module-body">
-          ${mod.description ? `<div class="module-desc">${esc(mod.description)}</div>` : ''}
+          ${mod.description ? `<div class="module-desc">${escapeHtml(mod.description)}</div>` : ''}
 
-          <div style="font-size:10px;font-weight:600;color:var(--ink-light);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px">Assigned Articles</div>
-          <div class="assignments-list" id="alist-${mod.id}">
-            <div class="loading-row"><span class="spinner"></span></div>
+          <div class="assignments-section-title">Assigned Articles</div>
+          <div class="assignments-list" id="assignments-${mod.id}">
+            <div style="font-size:12px;color:var(--ink-light)"><span class="spinner"></span></div>
           </div>
 
           <div class="add-assignment-form">
             <h4>Add Article</h4>
             <div class="inline-form-row">
               <div class="form-field">
-                <label>Title</label>
+                <label>Article Title</label>
                 <input type="text" id="a-title-${mod.id}" placeholder="e.g. BBC: Climate report" />
               </div>
               <div class="form-field">
-                <label>URL</label>
+                <label>Article URL</label>
                 <input type="url" id="a-url-${mod.id}" placeholder="https://…" />
-              </div>
-              <div class="form-field">
-                <label>Student Email</label>
-                <input type="text" id="a-email-${mod.id}" placeholder="student@school.edu" />
               </div>
               <button class="btn btn-primary btn-sm" onclick="addAssignment('${mod.id}')">Add</button>
             </div>
@@ -982,7 +780,7 @@
 
           <div class="results-section">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-              <span style="font-size:10px;font-weight:600;color:var(--ink-light);text-transform:uppercase;letter-spacing:1.2px">Student Results</span>
+              <span class="assignments-section-title" style="margin-bottom:0">Student Results</span>
               <button class="btn btn-outline btn-sm" onclick="loadResults('${mod.id}')">Load Results</button>
             </div>
             <div id="results-${mod.id}"></div>
@@ -990,203 +788,173 @@
         </div>
       `;
 
-      card.querySelector('.module-header').addEventListener('click', () => {
-        const wasExpanded = card.classList.contains('expanded');
+      // Toggle expand
+      card.querySelector('.module-header').addEventListener('click', async () => {
+        const isExpanded = card.classList.contains('expanded');
         card.classList.toggle('expanded');
-        if (!wasExpanded) loadAssignments(mod.id);
+        if (!isExpanded) {
+          await loadAssignments(mod.id);
+        }
       });
 
+      // Lazy-load assignment count
       loadAssignmentCount(mod.id);
+
       return card;
     }
 
     async function loadAssignmentCount(moduleId) {
-      try {
-        const { count } = await sb
-          .from('module_assignments')
-          .select('id', { count: 'exact', head: true })
-          .eq('module_id', moduleId);
-        const el = document.getElementById(`acount-${moduleId}`);
-        if (el) el.textContent = `${count ?? 0} article${count === 1 ? '' : 's'}`;
-      } catch (_) {}
+      const { count } = await sb
+        .from('assignments')
+        .select('id', { count: 'exact', head: true })
+        .eq('module_id', moduleId);
+      const el = document.getElementById(`assignment-count-${moduleId}`);
+      if (el) el.textContent = `${count ?? 0} article${count === 1 ? '' : 's'}`;
     }
 
     async function loadAssignments(moduleId) {
-      const el = document.getElementById(`alist-${moduleId}`);
-      if (!el) return;
+      const container = document.getElementById(`assignments-${moduleId}`);
+      if (!container) return;
 
-      try {
-        const { data, error } = await sb
-          .from('module_assignments')
-          .select('*')
-          .eq('module_id', moduleId)
-          .order('created_at', { ascending: true });
+      const { data, error } = await sb
+        .from('assignments')
+        .select('*')
+        .eq('module_id', moduleId)
+        .order('created_at', { ascending: true });
 
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-          el.innerHTML = '<div style="font-size:12px;color:var(--ink-light);font-style:italic">No articles assigned yet.</div>';
-          return;
-        }
-
-        el.innerHTML = data.map(a => `
-          <div class="assignment-row" id="arow-${a.id}">
-            <span class="assignment-title">${esc(a.article_title || a.article_url || a.id)}</span>
-            <span class="assignment-status status-${esc(a.status || 'assigned')}">${esc(a.status || 'assigned')}</span>
-            ${a.article_url ? `<a class="assignment-url" href="${esc(a.article_url)}" target="_blank" rel="noopener">↗</a>` : ''}
-          </div>
-        `).join('');
-
-        const countEl = document.getElementById(`acount-${moduleId}`);
-        if (countEl) countEl.textContent = `${data.length} article${data.length === 1 ? '' : 's'}`;
-      } catch (e) {
-        el.innerHTML = `<div style="font-size:12px;color:var(--red)">${esc(e.message)}</div>`;
+      if (error) {
+        container.innerHTML = `<div class="empty-assignments">Error: ${escapeHtml(error.message)}</div>`;
+        return;
       }
+
+      if (!data || data.length === 0) {
+        container.innerHTML = '<div class="empty-assignments">No articles assigned yet.</div>';
+        return;
+      }
+
+      container.innerHTML = data.map(a => `
+        <div class="assignment-row" id="arow-${a.id}">
+          <span class="assignment-title">${escapeHtml(a.article_title || a.article_url)}</span>
+          <a class="assignment-url" href="${escapeHtml(a.article_url)}" target="_blank" rel="noopener">↗ Open</a>
+          <button class="btn btn-danger" onclick="deleteAssignment('${a.id}', '${moduleId}')">Remove</button>
+        </div>
+      `).join('');
+
+      // Update count badge
+      const countEl = document.getElementById(`assignment-count-${moduleId}`);
+      if (countEl) countEl.textContent = `${data.length} article${data.length === 1 ? '' : 's'}`;
     }
 
     async function addAssignment(moduleId) {
       const titleEl = document.getElementById(`a-title-${moduleId}`);
-      const urlEl   = document.getElementById(`a-url-${moduleId}`);
-      const emailEl = document.getElementById(`a-email-${moduleId}`);
-      const url     = urlEl.value.trim();
-      const title   = titleEl.value.trim();
-      const email   = emailEl.value.trim();
+      const urlEl = document.getElementById(`a-url-${moduleId}`);
+      const title = titleEl.value.trim();
+      const url = urlEl.value.trim();
 
       if (!url) { toast('Please enter an article URL.', 'error'); return; }
 
-      try {
-        const { error } = await sb.from('module_assignments').insert({
-          module_id:     moduleId,
-          article_url:   url,
-          article_title: title || url,
-          student_email: email || null,
-          status:        'assigned',
-        });
+      const { error } = await sb.from('assignments').insert({
+        module_id: moduleId,
+        article_url: url,
+        article_title: title || url
+      });
 
-        if (error) throw error;
+      if (error) { toast('Error: ' + error.message, 'error'); return; }
 
-        titleEl.value = '';
-        urlEl.value   = '';
-        emailEl.value = '';
-        toast('Article assigned!');
-        await loadAssignments(moduleId);
-      } catch (e) {
-        toast('Error: ' + e.message, 'error');
-      }
+      titleEl.value = '';
+      urlEl.value = '';
+      toast('Article assigned!');
+      await loadAssignments(moduleId);
     }
 
-    // ── Results ───────────────────────────────────────────────────────────────
+    async function deleteAssignment(assignmentId, moduleId) {
+      if (!confirm('Remove this assignment?')) return;
 
+      const { error } = await sb.from('assignments').delete().eq('id', assignmentId);
+      if (error) { toast('Error: ' + error.message, 'error'); return; }
+
+      toast('Assignment removed.');
+      await loadAssignments(moduleId);
+    }
+
+    // ── Results ──
     async function loadResults(moduleId) {
-      const el = document.getElementById(`results-${moduleId}`);
-      el.innerHTML = '<div class="loading-row"><span class="spinner"></span>Loading…</div>';
+      const container = document.getElementById(`results-${moduleId}`);
+      container.innerHTML = '<div style="font-size:12px;color:var(--ink-light)"><span class="spinner"></span>Loading…</div>';
 
-      try {
-        const { data: assignments, error: aErr } = await sb
-          .from('module_assignments')
-          .select('id, article_title, article_url')
-          .eq('module_id', moduleId);
+      // Get assignments for this module
+      const { data: assignments, error: aErr } = await sb
+        .from('assignments')
+        .select('id, article_title, article_url')
+        .eq('module_id', moduleId);
 
-        if (aErr) throw aErr;
-
-        if (!assignments?.length) {
-          el.innerHTML = '<div style="font-size:12px;color:var(--ink-light);font-style:italic">No assignments to show results for.</div>';
-          return;
-        }
-
-        const ids = assignments.map(a => a.id);
-
-        const { data: results, error: rErr } = await sb
-          .from('student_results')
-          .select('*, module_assignments(article_title, article_url), users(name, email)')
-          .in('module_assignment_id', ids)
-          .order('completed_at', { ascending: false });
-
-        if (rErr) throw rErr;
-
-        if (!results?.length) {
-          el.innerHTML = '<div style="font-size:12px;color:var(--ink-light);font-style:italic">No student submissions yet.</div>';
-          return;
-        }
-
-        const rows = results.map(r => {
-          const score   = r.analysis_json?.overall_score ?? '—';
-          const verdict = r.analysis_json?.verdict ?? '—';
-          const cls = typeof score === 'number'
-            ? (score >= 70 ? 'score-green' : score >= 40 ? 'score-amber' : 'score-red') : '';
-          const student = r.users?.name || r.users?.email || r.student_id;
-          const article = r.module_assignments?.article_title || r.module_assignments?.article_url || '—';
-          return `<tr>
-            <td>${esc(String(student))}</td>
-            <td>${esc(String(article))}</td>
-            <td>${typeof score === 'number' ? `<span class="score-pill ${cls}">${score}</span>` : '—'}</td>
-            <td>${esc(String(verdict))}</td>
-            <td>${fmtDate(r.completed_at)}</td>
-          </tr>`;
-        }).join('');
-
-        el.innerHTML = `<div class="results-table-wrap"><table>
-          <thead><tr><th>Student</th><th>Article</th><th>Score</th><th>Verdict</th><th>Date</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table></div>`;
-      } catch (e) {
-        console.error('loadResults:', e);
-        el.innerHTML = `<div style="font-size:12px;color:var(--red)">${esc(e.message)}</div>`;
+      if (aErr || !assignments?.length) {
+        container.innerHTML = '<div class="no-results">No assignments to show results for.</div>';
+        return;
       }
+
+      const assignmentIds = assignments.map(a => a.id);
+
+      // Get results for those assignments
+      const { data: results, error: rErr } = await sb
+        .from('student_results')
+        .select('*, assignments(article_title, article_url), users(name, email)')
+        .in('assignment_id', assignmentIds)
+        .order('completed_at', { ascending: false });
+
+      if (rErr) {
+        container.innerHTML = `<div class="no-results">Error: ${escapeHtml(rErr.message)}</div>`;
+        return;
+      }
+
+      if (!results || results.length === 0) {
+        container.innerHTML = '<div class="no-results">No student submissions yet.</div>';
+        return;
+      }
+
+      const rows = results.map(r => {
+        const score = r.analysis_json?.overall_score ?? '—';
+        const verdict = r.analysis_json?.verdict ?? '—';
+        const pillClass = typeof score === 'number'
+          ? (score >= 70 ? 'score-green' : score >= 40 ? 'score-amber' : 'score-red')
+          : '';
+        const student = r.users?.name || r.users?.email || r.student_id;
+        const article = r.assignments?.article_title || r.assignments?.article_url || r.assignment_id;
+        const date = r.completed_at ? new Date(r.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—';
+
+        return `<tr>
+          <td>${escapeHtml(String(student))}</td>
+          <td>${escapeHtml(String(article))}</td>
+          <td>${typeof score === 'number' ? `<span class="score-pill ${pillClass}">${score}</span>` : '—'}</td>
+          <td>${escapeHtml(String(verdict))}</td>
+          <td>${date}</td>
+        </tr>`;
+      }).join('');
+
+      container.innerHTML = `
+        <div class="results-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Article</th>
+                <th>Score</th>
+                <th>Verdict</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
     }
 
-    // ── Create Module ─────────────────────────────────────────────────────────
-
-    document.getElementById('create-module-btn').addEventListener('click', createModule);
-
-    async function createModule() {
-      const name  = document.getElementById('mod-name').value.trim();
-      const focus = document.getElementById('mod-focus').value;
-      const ks    = document.getElementById('mod-ks').value;
-      const desc  = document.getElementById('mod-desc').value.trim();
-      const errEl = document.getElementById('create-error');
-      errEl.textContent = '';
-
-      if (!name)  { errEl.textContent = 'Module name is required.';  return; }
-      if (!focus) { errEl.textContent = 'Please select a focus area.'; return; }
-      if (!ks)    { errEl.textContent = 'Please select a key stage.';  return; }
-
-      const btn = document.getElementById('create-module-btn');
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>Creating…';
-
-      try {
-        const { data: { session }, error: sErr } = await sb.auth.getSession();
-        if (sErr || !session) throw new Error(sErr?.message || 'Session expired — please sign out and sign in again.');
-
-        const { error } = await sb.from('modules').insert({
-          teacher_id:  session.user.id,
-          name,
-          description: desc || null,
-          focus_area:  focus,
-          key_stage:   ks,
-          status:      'active',
-        });
-
-        if (error) throw error;
-
-        document.getElementById('mod-name').value  = '';
-        document.getElementById('mod-focus').value = '';
-        document.getElementById('mod-ks').value    = '';
-        document.getElementById('mod-desc').value  = '';
-        toast('Module created!');
-        loadModules(session);
-      } catch (e) {
-        console.error('createModule:', e);
-        errEl.textContent = e.message || String(e);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Create Module';
-      }
+    // ── Utils ──
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.appendChild(document.createTextNode(text));
+      return d.innerHTML;
     }
-
-    // ── Start ────────────────────────────────────────────────────────────────
-    boot();
   </script>
 </body>
 </html>
