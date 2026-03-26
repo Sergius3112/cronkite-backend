@@ -8,6 +8,12 @@ const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     detectSessionInUrl: true,
     persistSession: true,
     autoRefreshToken: true,
+    storageKey: 'cronkite-auth-token',
+    storage: {
+      getItem: (key) => window.localStorage.getItem(key),
+      setItem: (key, value) => window.localStorage.setItem(key, value),
+      removeItem: (key) => window.localStorage.removeItem(key),
+    }
   }
 })
 

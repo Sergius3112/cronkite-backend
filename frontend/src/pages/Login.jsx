@@ -13,6 +13,7 @@ export default function Login() {
       else setLoading(false)
     })
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, session) => {
+      console.log('Auth state change:', _e, session?.user?.email)
       if (session) redirectByRole(session)
     })
     return () => subscription.unsubscribe()
