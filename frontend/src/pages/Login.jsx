@@ -8,13 +8,29 @@ export default function Login() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    // If there's an access token in the URL hash, wait for Supabase to process it
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+      // Give Supabase time to process the hash and store the session
+      const timer = setTimeout(async () => {
+        const { data: { session } } = await sb.auth.getSession()
+        if (session) {
+          navigate('/teacher', { replace: true })
+        } else {
+          setLoading(false)
+        }
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+
+    // Normal flow - check existing session
     sb.auth.getSession().then(({ data: { session } }) => {
-      if (session) redirectByRole(session)
+      if (session) navigate('/teacher', { replace: true })
       else setLoading(false)
     })
+
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, session) => {
       console.log('Auth state change:', _e, session?.user?.email)
-      if (session) redirectByRole(session)
+      if (session) navigate('/teacher', { replace: true })
     })
     return () => subscription.unsubscribe()
   }, [])
