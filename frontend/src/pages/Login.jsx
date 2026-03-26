@@ -19,16 +19,7 @@ export default function Login() {
   }, [])
 
   async function redirectByRole(session) {
-    try {
-      const { data } = await sb
-        .from('users')
-        .select('role')
-        .eq('id', session.user.id)
-        .single()
-      navigate(data?.role === 'teacher' ? '/teacher' : '/student', { replace: true })
-    } catch {
-      navigate('/student', { replace: true })
-    }
+    navigate('/teacher', { replace: true })
   }
 
   async function handleGoogleLogin() {
