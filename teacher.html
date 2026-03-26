@@ -744,9 +744,13 @@
     const { createClient } = supabase;
     const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    if (window.location.hash.includes('access_token')) {
-      window.history.replaceState({}, document.title, '/teacher');
-    }
+    // Parse session from URL hash on OAuth callback
+    sb.auth.getSessionFromUrl({ storeSession: true }).then(({ data, error }) => {
+      if (data?.session) {
+        // Session found in URL — onAuthStateChange will fire automatically
+        window.history.replaceState({}, document.title, '/teacher');
+      }
+    });
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
