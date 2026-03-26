@@ -1051,7 +1051,7 @@ async def api_notify(req: NotifyRequest):
 
     due_line = f"<p><strong>Due:</strong> {req.due_date}</p>" if req.due_date else ""
     teacher_line = f" from <strong>{req.teacher_name}</strong>" if req.teacher_name else ""
-    cronkite_url = "https://cronkite-backend-production.up.railway.app"
+    cronkite_url = "https://cronkite.education"
 
     html = f"""
 <!DOCTYPE html>
@@ -1469,7 +1469,7 @@ def get_subscriber_emails() -> list:
 
 
 def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, briefing_id: str = "") -> str:
-    base_url = "https://cronkite-backend-production.up.railway.app"
+    base_url = "https://cronkite.education"
     view_url = f"{base_url}/briefing/{briefing_id}" if briefing_id else f"{base_url}/briefing/latest"
 
     # ── Section 1: Cronkite Coverage ─────────────────────────────────────────
