@@ -23,7 +23,8 @@ export default function App() {
       <Toaster />
       <Sonner />
       <Routes>
-        <Route path="/"        element={<Login />} />
+        <Route path="/"             element={<Login />} />
+        <Route path="/auth/callback" element={<Login />} />
         <Route path="/teacher" element={<Shell><TeacherDashboard /></Shell>} />
         <Route path="/student" element={<Shell><StudentDashboard /></Shell>} />
         <Route path="/modules"  element={<Shell><Modules /></Shell>} />

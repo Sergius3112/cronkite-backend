@@ -5,15 +5,11 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJ
 
 const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
+    flowType: 'pkce',
     detectSessionInUrl: true,
     persistSession: true,
     autoRefreshToken: true,
     storageKey: 'cronkite-auth-token',
-    storage: {
-      getItem: (key) => window.localStorage.getItem(key),
-      setItem: (key, value) => window.localStorage.setItem(key, value),
-      removeItem: (key) => window.localStorage.removeItem(key),
-    }
   }
 })
 

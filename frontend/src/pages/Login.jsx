@@ -1,28 +1,32 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { sb } from '../lib/supabase'
 
 export default function Login() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    // If there's an access token in the URL hash, wait for Supabase to process it
-    if (window.location.hash && window.location.hash.includes('access_token')) {
-      // Give Supabase time to process the hash and store the session
-      const timer = setTimeout(async () => {
-        const { data: { session } } = await sb.auth.getSession()
-        if (session) {
+    const code = searchParams.get('code')
+
+    // PKCE flow: exchange the code for a session
+    if (code) {
+      sb.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+        if (error) {
+          setError(error.message)
+          setLoading(false)
+        } else if (data.session) {
           navigate('/teacher', { replace: true })
         } else {
           setLoading(false)
         }
-      }, 1000)
-      return () => clearTimeout(timer)
+      })
+      return
     }
 
-    // Normal flow - check existing session
+    // Normal flow — check existing session
     sb.auth.getSession().then(({ data: { session } }) => {
       if (session) navigate('/teacher', { replace: true })
       else setLoading(false)
@@ -33,11 +37,7 @@ export default function Login() {
       if (session) navigate('/teacher', { replace: true })
     })
     return () => subscription.unsubscribe()
-  }, [])
-
-  async function redirectByRole(session) {
-    navigate('/teacher', { replace: true })
-  }
+  }, [searchParams])
 
   async function handleGoogleLogin() {
     setError(null)
