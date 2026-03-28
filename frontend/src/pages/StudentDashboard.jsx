@@ -5,6 +5,16 @@ import { CheckCircle, AlertCircle, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { ArticleAnalysisCard } from '../components/articles/ArticleAnalysisCard'
 
+const SUPPORTED_DOMAINS = [
+  'bbc.co.uk', 'bbc.com', 'theguardian.com', 'thetimes.co.uk',
+  'dailymail.co.uk', 'independent.co.uk', 'telegraph.co.uk',
+  'sky.com', 'reuters.com', 'apnews.com',
+]
+
+function isSupportedUrl(url) {
+  try { return SUPPORTED_DOMAINS.some(d => new URL(url).hostname.includes(d)) } catch { return false }
+}
+
 const FOCUS_LABELS = {
   evaluating_content:    'Evaluating Content',
   persuasion_techniques: 'Persuasion Techniques',
@@ -260,13 +270,21 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
               View Analysis
             </button>
           )}
-          {!done && articleUrl && (
+          {!done && articleUrl && isSupportedUrl(articleUrl) && (
             <button
               onClick={() => cardNavigate(`/read?url=${encodeURIComponent(articleUrl)}`)}
               style={{ background: 'rgb(196,30,58)', color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
             >
               Read with Cronkite
             </button>
+          )}
+          {!done && articleUrl && !isSupportedUrl(articleUrl) && (
+            <a
+              href={articleUrl} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'inline-block', background: '#1A1714', color: '#F7F3EC', border: 'none', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", textDecoration: 'none' }}
+            >
+              Read article →
+            </a>
           )}
           {!done && (
             <button

@@ -141,7 +141,21 @@ export default function ArticleReader() {
             </div>
           )}
 
-          {article && (
+          {article && article.blocked && (
+            <div style={{ maxWidth: '600px', margin: '60px auto', textAlign: 'center' }}>
+              <p style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', color: '#1A1714', marginBottom: '8px' }}>Article not available in reader</p>
+              <p style={{ fontSize: '13px', color: '#7A746E', marginBottom: '6px', lineHeight: 1.6 }}>
+                This article requires JavaScript or a subscription and can't be displayed here.
+              </p>
+              <p style={{ fontSize: '12px', color: '#B0A89E', marginBottom: '20px' }}>You can still read it on the original site and chat about it here.</p>
+              <a href={url} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-block', background: 'rgb(196,30,58)', color: '#fff', borderRadius: '7px', padding: '8px 18px', fontSize: '13px', fontWeight: 600, textDecoration: 'none' }}>
+                Open original article →
+              </a>
+            </div>
+          )}
+
+          {article && !article.blocked && (
             <div style={{ maxWidth: '640px', margin: '0 auto' }}>
               <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'rgb(196,30,58)', marginBottom: '10px' }}>
                 {article.source}

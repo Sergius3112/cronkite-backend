@@ -1818,7 +1818,7 @@ async def read_article(url: str = ""):
     except Exception:
         pass
 
-    # BeautifulSoup fallback
+    # BeautifulSoup fallback with multi-selector approach
     if not content or len(content) < 100:
         try:
             from bs4 import BeautifulSoup
@@ -1830,19 +1830,43 @@ async def read_article(url: str = ""):
                     title = og_title["content"]
                 elif soup.title:
                     title = soup.title.get_text(strip=True)
-            # Extract content
-            for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form"]):
+            # Remove non-content tags
+            for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form", "iframe", "noscript"]):
                 tag.decompose()
-            article_tag = soup.find("article")
-            paragraphs = article_tag.find_all("p") if article_tag else soup.find_all("p")
+            # Try multiple selectors for article body
+            selectors = [
+                "article",
+                "[class*='article-body']",
+                "[class*='story-body']",
+                "[class*='post-content']",
+                "[class*='entry-content']",
+                "[itemprop='articleBody']",
+                "main",
+                "[role='main']",
+            ]
+            container = None
+            for sel in selectors:
+                container = soup.select_one(sel)
+                if container:
+                    break
+            paragraphs = container.find_all("p") if container else soup.find_all("p")
             text = "\n\n".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20)
             if len(text) >= 100:
                 content = text
         except Exception:
             pass
 
-    if not content:
-        return JSONResponse({"title": title, "content": "", "source": source, "url": url, "error": "Could not extract article text"})
+    # Detect blocked / JS-gated articles
+    if not content or len(content) < 200:
+        blocked_signals = [
+            "enable javascript" in html.lower(),
+            "you need to enable javascript" in html.lower(),
+            "please enable cookies" in html.lower(),
+            "subscribe to continue" in html.lower(),
+        ]
+        if any(blocked_signals) or len(content or "") < 200:
+            return {"title": title or source, "content": "", "source": source, "url": url, "blocked": True,
+                    "error": "This article could not be extracted — it may require JavaScript or a subscription."}
 
     return {"title": title, "content": content, "source": source, "url": url}
 
@@ -1858,8 +1882,21 @@ FOCUS_KEYWORDS = {
 }
 
 
+SUPPORTED_DOMAINS = [
+    "bbc.co.uk", "bbc.com",
+    "theguardian.com",
+    "thetimes.co.uk",
+    "dailymail.co.uk",
+    "independent.co.uk",
+    "telegraph.co.uk",
+    "sky.com",
+    "reuters.com",
+    "apnews.com",
+]
+
+
 def generate_for_you_suggestions(user_id: str, modules: list) -> list:
-    """For each module (max 3), use Tavily to find 2 recent UK news articles."""
+    """For each module (max 3), use Tavily to find recent UK news articles from supported domains."""
     tavily = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
     suggestions = []
 
@@ -1870,9 +1907,10 @@ def generate_for_you_suggestions(user_id: str, modules: list) -> list:
 
         try:
             results = tavily.search(
-                query=f"UK news {keywords} site:bbc.co.uk OR site:theguardian.com OR site:thetimes.co.uk OR site:dailymail.co.uk",
-                max_results=2,
-                days=3,
+                query=f"UK news {keywords}",
+                include_domains=SUPPORTED_DOMAINS,
+                max_results=5,
+                days=7,
             )
             for item in results.get('results', []):
                 # Infer bias from domain
