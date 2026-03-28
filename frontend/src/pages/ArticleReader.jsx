@@ -53,7 +53,10 @@ export default function ArticleReader() {
 
       const resp = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           url,
           article_content: article?.content?.substring(0, 3000) || '',
@@ -61,6 +64,11 @@ export default function ArticleReader() {
           history: chatHistory,
         }),
       })
+      if (!resp.ok) {
+        const err = await resp.text()
+        console.error('Chat error:', resp.status, err)
+        throw new Error(`API error ${resp.status}`)
+      }
       const data = await resp.json()
       const reply = data.reply || 'Sorry, I could not process that.'
 

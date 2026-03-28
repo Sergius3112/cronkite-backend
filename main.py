@@ -1977,10 +1977,7 @@ class ChatRequest(BaseModel):
 @app.post("/api/chat")
 async def chat_with_article(req: ChatRequest, authorization: str = Header(None)):
     try:
-        token = authorization.replace('Bearer ', '') if authorization else ''
-        if not token:
-            return JSONResponse({"error": "Unauthorised"}, status_code=401)
-
+        # Auth is optional for chat — proceed regardless
         import anthropic
         client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
 
