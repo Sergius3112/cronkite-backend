@@ -5,7 +5,9 @@ import { sb } from '../lib/supabase'
 export default function Login() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(
+    new URLSearchParams(window.location.search).has('code')
+  )
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -15,8 +17,7 @@ export default function Login() {
     if (code) {
       sb.auth.exchangeCodeForSession(code).then(({ data, error }) => {
         if (error) {
-          setError(error.message)
-          setLoading(false)
+          navigate('/', { replace: true })
         } else if (data.session) {
           navigate('/teacher', { replace: true })
         } else {
