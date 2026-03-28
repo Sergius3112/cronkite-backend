@@ -14,6 +14,7 @@
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === 'showSidebar') showSidebar(message.data);
+  if (message.action === 'showChatSidebar') showChatSidebar(message.url);
 });
 
 function showSidebar(data) {
@@ -251,4 +252,95 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.appendChild(document.createTextNode(String(text)));
   return div.innerHTML;
+}
+
+function showChatSidebar(url) {
+  const existing = document.getElementById('factcheck-sidebar');
+  if (existing) existing.remove();
+
+  const sidebar = document.createElement('div');
+  sidebar.id = 'factcheck-sidebar';
+
+  const logoUrl = chrome.runtime.getURL('icons_white/icon128.png');
+  const articleContent = document.body.innerText.substring(0, 3000);
+  let chatHistory = [];
+
+  sidebar.innerHTML = `
+    <div class="fc-header-top">
+      <img class="fc-logo" src="${logoUrl}" alt="Cronkite">
+      <span style="font-size:11px;color:#C8B89A;flex:1;margin-left:8px">Ask Cronkite</span>
+      <button class="fc-close" id="fc-close-btn">✕</button>
+    </div>
+    <div class="fc-scrollable" id="fc-chat-messages" style="display:flex;flex-direction:column;gap:8px;padding:12px;">
+      <div style="background:rgba(247,243,236,0.1);border-radius:10px;padding:10px 12px;font-size:12px;color:#C8B89A;line-height:1.5">
+        Hi! I'm Cronkite. I've read this article. Ask me anything about its bias, claims, or persuasion techniques.
+      </div>
+    </div>
+    <div style="padding:10px;border-top:1px solid rgba(247,243,236,0.1);display:flex;gap:6px;">
+      <input id="fc-chat-input" placeholder="Ask about this article…"
+        style="flex:1;background:rgba(247,243,236,0.08);border:1px solid rgba(247,243,236,0.15);border-radius:7px;padding:8px 10px;font-size:12px;color:#F7F3EC;font-family:'DM Sans',sans-serif;outline:none;" />
+      <button id="fc-send-btn"
+        style="background:rgb(196,30,58);color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">
+        Send
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(sidebar);
+  document.getElementById('fc-close-btn').addEventListener('click', () => {
+    sidebar.remove();
+    document.body.style.marginRight = '';
+  });
+  document.body.style.marginRight = '390px';
+
+  const input = document.getElementById('fc-chat-input');
+  const sendBtn = document.getElementById('fc-send-btn');
+  const messages = document.getElementById('fc-chat-messages');
+
+  async function sendMessage() {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+
+    // Add student message
+    const studentMsg = document.createElement('div');
+    studentMsg.style.cssText = 'background:rgb(196,30,58);border-radius:10px;padding:8px 12px;font-size:12px;color:#fff;line-height:1.5;align-self:flex-end;max-width:85%;margin-left:15%';
+    studentMsg.textContent = text;
+    messages.appendChild(studentMsg);
+    messages.scrollTop = messages.scrollHeight;
+
+    // Loading indicator
+    const loading = document.createElement('div');
+    loading.style.cssText = 'background:rgba(247,243,236,0.1);border-radius:10px;padding:8px 12px;font-size:12px;color:#9E9488;line-height:1.5;max-width:85%';
+    loading.textContent = 'Cronkite is thinking…';
+    messages.appendChild(loading);
+    messages.scrollTop = messages.scrollHeight;
+
+    try {
+      const result = await chrome.storage.local.get('sb-givyodepnqelhhmtmypk-auth-token');
+      const authData = result['sb-givyodepnqelhhmtmypk-auth-token'];
+      const token = authData?.access_token || authData?.currentSession?.access_token || '';
+
+      const resp = await fetch('https://cronkite.education/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ url, article_content: articleContent, message: text, history: chatHistory })
+      });
+      const data = await resp.json();
+      const reply = data.reply || 'Sorry, I could not process that.';
+
+      chatHistory.push({ role: 'user', content: text });
+      chatHistory.push({ role: 'assistant', content: reply });
+
+      loading.style.color = '#C8B89A';
+      loading.textContent = reply;
+    } catch {
+      loading.style.color = 'rgb(196,30,58)';
+      loading.textContent = 'Error — please try again.';
+    }
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 }

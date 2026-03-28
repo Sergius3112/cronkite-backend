@@ -127,4 +127,12 @@ analyzeBtn.addEventListener('click', async () => {
   }
 });
 
+document.getElementById('chatBtn')?.addEventListener('click', async () => {
+  const token = await getAuthToken();
+  if (!token) { showLoginState(); return; }
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  await chrome.tabs.sendMessage(tab.id, { action: 'showChatSidebar', url: tab.url });
+  window.close();
+});
+
 init();

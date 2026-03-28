@@ -1776,6 +1776,179 @@ async def api_briefing_send(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── For You — AI-suggested articles matched to student modules ────────────────
+
+FOCUS_KEYWORDS = {
+    'evaluating_content': 'media credibility journalism',
+    'persuasion_techniques': 'political rhetoric persuasion',
+    'online_behaviour': 'social media online misinformation',
+    'identifying_risks': 'misinformation fake news',
+    'managing_information': 'news literacy information',
+}
+
+
+def generate_for_you_suggestions(user_id: str, modules: list) -> list:
+    """For each module (max 3), use Tavily to find 2 recent UK news articles."""
+    tavily = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
+    suggestions = []
+
+    for mod in modules[:3]:
+        focus = mod.get('focus_point') or mod.get('focus_area') or ''
+        keywords = FOCUS_KEYWORDS.get(focus, 'UK news media literacy')
+        mod_title = mod.get('title') or mod.get('name') or 'Untitled'
+
+        try:
+            results = tavily.search(
+                query=f"UK news {keywords} site:bbc.co.uk OR site:theguardian.com OR site:thetimes.co.uk OR site:dailymail.co.uk",
+                max_results=2,
+                days=3,
+            )
+            for item in results.get('results', []):
+                # Infer bias from domain
+                url = item.get('url', '')
+                source = item.get('source', '')
+                bias = 'centre'
+                if 'theguardian.com' in url:
+                    bias = 'left'
+                elif 'dailymail.co.uk' in url or 'thetimes.co.uk' in url:
+                    bias = 'right'
+
+                suggestions.append({
+                    'title': item.get('title', ''),
+                    'url': url,
+                    'source': source or url.split('/')[2] if '/' in url else '',
+                    'reason': f"Relevant to your module on {mod_title} — covers {keywords.split()[0]}.",
+                    'bias': bias,
+                    'module_title': mod_title,
+                })
+        except Exception as e:
+            logger.warning(f"For You Tavily search failed for module {mod_title}: {e}")
+
+    return suggestions
+
+
+@app.get("/api/for-you")
+async def get_for_you(authorization: str = Header(None)):
+    """Return AI-suggested articles matched to the user's modules. Cached daily."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return JSONResponse({"error": "Unauthorised"}, status_code=401)
+    token = authorization.split(" ", 1)[1].strip()
+
+    try:
+        supa = get_supabase()
+        user_res = supa.auth.get_user(token)
+        if not user_res or not user_res.user:
+            return JSONResponse({"error": "Unauthorised"}, status_code=401)
+        user_id = str(user_res.user.id)
+        user_email = user_res.user.email or ""
+    except Exception:
+        return JSONResponse({"error": "Unauthorised"}, status_code=401)
+
+    from datetime import date as date_type
+    today = str(date_type.today())
+
+    # Check cache in for_you_suggestions table
+    try:
+        supa_service = get_supabase()
+        cached = supa_service.table("for_you_suggestions").select("suggestions").eq("user_id", user_id).eq("date", today).execute()
+        if cached.data and len(cached.data) > 0:
+            return {"suggestions": cached.data[0]["suggestions"], "generated_at": today}
+    except Exception as e:
+        logger.warning(f"For You cache check failed: {e}")
+
+    # Get user's modules via their assignments
+    try:
+        assignments = supa_service.table("assignments").select("module_id, modules(id, title, focus_point, key_stage)").eq("student_email", user_email).execute()
+        seen_ids = set()
+        modules = []
+        for row in (assignments.data or []):
+            mod = row.get("modules")
+            mid = row.get("module_id")
+            if mod and mid and mid not in seen_ids:
+                seen_ids.add(mid)
+                modules.append(mod)
+    except Exception as e:
+        logger.warning(f"For You module lookup failed: {e}")
+        modules = []
+
+    if not modules:
+        return {"suggestions": [], "generated_at": today}
+
+    # Generate new suggestions
+    suggestions = generate_for_you_suggestions(user_id, modules)
+
+    # Store in cache
+    try:
+        supa_service.table("for_you_suggestions").upsert({
+            "user_id": user_id,
+            "date": today,
+            "suggestions": suggestions,
+        }, on_conflict="user_id,date").execute()
+    except Exception as e:
+        logger.warning(f"For You cache store failed: {e}")
+
+    return {"suggestions": suggestions, "generated_at": today}
+
+# TODO: Add generate_for_you_suggestions to daily scheduler for all active users
+# once we identify active users from the assignments table.
+# Example: _scheduler.add_job(run_daily_for_you, 'cron', hour=9, minute=0)
+
+
+# ── Chat with article — powers Cronkite Chrome extension chat sidebar ─────────
+
+class ChatRequest(BaseModel):
+    url: str
+    article_content: str
+    message: str
+    history: list = []
+
+
+@app.post("/api/chat")
+async def chat_with_article(req: ChatRequest, authorization: str = Header(None)):
+    try:
+        token = authorization.replace('Bearer ', '') if authorization else ''
+        if not token:
+            return JSONResponse({"error": "Unauthorised"}, status_code=401)
+
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+
+        system_prompt = f"""You are Cronkite, an AI media literacy assistant for UK secondary school students.
+
+You are helping a student analyse this article:
+URL: {req.url}
+
+Article content:
+{req.article_content[:3000]}
+
+Help the student understand:
+- Bias and political leaning
+- Persuasion techniques being used
+- Credibility of claims
+- How to think critically about this content
+
+Keep responses concise, educational, and appropriate for secondary school students (ages 11-18).
+Never do homework for them — ask questions back to develop their thinking."""
+
+        messages = []
+        for h in req.history[-6:]:  # Keep last 6 exchanges
+            messages.append({"role": h["role"], "content": h["content"]})
+        messages.append({"role": "user", "content": req.message})
+
+        response = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=500,
+            system=system_prompt,
+            messages=messages
+        )
+
+        return JSONResponse({"reply": response.content[0].text})
+
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # ── SPA catch-all — must be the very last route ───────────────────────────────
 # Serves index.html for any path not matched by an API route above,
 # allowing React Router to handle client-side navigation.
