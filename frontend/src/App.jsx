@@ -12,6 +12,7 @@ import Reports from './pages/Reports'
 import Updates from './pages/Updates'
 import StudentModules from './pages/StudentModules'
 import ForYou from './pages/ForYou'
+import ArticleReader from './pages/ArticleReader'
 
 function Shell({ children }) {
   return <AppLayout>{children}</AppLayout>
@@ -25,6 +26,7 @@ export default function App() {
       <Routes>
         <Route path="/"             element={<Login />} />
         <Route path="/auth/callback" element={<Login />} />
+        <Route path="/read"          element={<ArticleReader />} />
         <Route path="/teacher" element={<Shell><TeacherDashboard /></Shell>} />
         <Route path="/student" element={<Shell><StudentDashboard /></Shell>} />
         <Route path="/modules"  element={<Shell><Modules /></Shell>} />

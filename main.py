@@ -1776,6 +1776,77 @@ async def api_briefing_send(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── Read Article — scrape article content for the in-app reader ────────────────
+
+@app.get("/api/read-article")
+async def read_article(url: str = ""):
+    """Fetch and extract article text/title for the Cronkite Article Reader."""
+    if not url:
+        return JSONResponse({"error": "Missing url parameter"}, status_code=400)
+
+    # Extract source from hostname
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        source = parsed.hostname.replace('www.', '') if parsed.hostname else url
+    except Exception:
+        source = url
+
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            html = resp.text
+    except Exception as e:
+        return JSONResponse({"title": "", "content": "", "source": source, "url": url, "error": f"Could not fetch URL: {e}"})
+
+    title = ""
+    content = ""
+
+    # newspaper3k (best for news articles)
+    try:
+        from newspaper import Article
+        article = Article(url)
+        article.set_html(html)
+        article.parse()
+        if article.text and len(article.text) >= 100:
+            title = article.title or ""
+            content = article.text
+    except Exception:
+        pass
+
+    # BeautifulSoup fallback
+    if not content or len(content) < 100:
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, "html.parser")
+            # Extract title
+            if not title:
+                og_title = soup.find("meta", property="og:title")
+                if og_title and og_title.get("content"):
+                    title = og_title["content"]
+                elif soup.title:
+                    title = soup.title.get_text(strip=True)
+            # Extract content
+            for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form"]):
+                tag.decompose()
+            article_tag = soup.find("article")
+            paragraphs = article_tag.find_all("p") if article_tag else soup.find_all("p")
+            text = "\n\n".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20)
+            if len(text) >= 100:
+                content = text
+        except Exception:
+            pass
+
+    if not content:
+        return JSONResponse({"title": title, "content": "", "source": source, "url": url, "error": "Could not extract article text"})
+
+    return {"title": title, "content": content, "source": source, "url": url}
+
+
 # ── For You — AI-suggested articles matched to student modules ────────────────
 
 FOCUS_KEYWORDS = {

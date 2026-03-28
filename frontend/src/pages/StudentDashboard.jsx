@@ -223,6 +223,7 @@ export default function StudentDashboard() {
 }
 
 function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onViewAnalysis }) {
+  const cardNavigate = useNavigate()
   const article = a.articles ?? null
   const title = article?.title || a.article_title || a.article_url || a.id
   const articleUrl = a.article_url || article?.url || ''
@@ -260,13 +261,12 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
             </button>
           )}
           {!done && articleUrl && (
-            <a
-              href={articleUrl}
-              target="_blank" rel="noopener noreferrer"
+            <button
+              onClick={() => cardNavigate(`/read?url=${encodeURIComponent(articleUrl)}`)}
               style={{ background: 'rgb(196,30,58)', color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
             >
-              Open Article
-            </a>
+              Read with Cronkite
+            </button>
           )}
           {!done && (
             <button

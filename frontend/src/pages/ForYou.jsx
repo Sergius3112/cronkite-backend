@@ -58,7 +58,7 @@ export default function ForYou() {
               <div style={{ fontSize: '12px', color: '#7A746E', marginBottom: '4px' }}>{s.source}</div>
               <div style={{ fontSize: '12px', color: '#7A746E', marginBottom: '6px', lineHeight: 1.5 }}>{s.reason}</div>
               {s.module_title && <div style={{ fontSize: '10px', color: '#B0A89E', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>{s.module_title}</div>}
-              <a href={s.url} target="_blank" rel="noopener noreferrer"
+              <a href={`/read?url=${encodeURIComponent(s.url)}`}
                 style={{ display: 'inline-block', background: 'rgb(196,30,58)', color: '#fff', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 600, textDecoration: 'none', fontFamily: "'DM Sans', sans-serif" }}>
                 Read with Cronkite →
               </a>
