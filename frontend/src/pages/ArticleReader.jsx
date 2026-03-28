@@ -2,6 +2,25 @@ import { useEffect, useState, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { sb } from '../lib/supabase'
 
+const CRONKITE_ERRORS = [
+  "Even our newsroom needs a coffee break. Try again in a moment.",
+  "The printing press has jammed. Give it another go.",
+  "Our fact-checkers are conferring. Please try again.",
+  "Breaking news: temporary technical difficulties. Stand by.",
+  "Signal lost. Adjusting the antenna...",
+  "Our newsroom is a little overwhelmed. Try again shortly.",
+  "This just in: something went wrong. We're on it.",
+  "404: Rhetoric not found. Please retry.",
+  "Cronkite is consulting its sources. One moment.",
+  "We're chasing the story. Try again shortly.",
+  "The press room is busy. Bear with us.",
+  "Deadline pressure. Back in a moment.",
+]
+
+function getRandomError() {
+  return CRONKITE_ERRORS[Math.floor(Math.random() * CRONKITE_ERRORS.length)]
+}
+
 export default function ArticleReader() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -70,12 +89,12 @@ export default function ArticleReader() {
         throw new Error(`API error ${resp.status}`)
       }
       const data = await resp.json()
-      const reply = data.reply || 'Sorry, I could not process that.'
+      const reply = data.reply || getRandomError()
 
       setChatHistory(prev => [...prev, { role: 'user', content: text }, { role: 'assistant', content: reply }])
       setMessages(prev => [...prev, { role: 'assistant', content: reply }])
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Error — please try again.' }])
+      setMessages(prev => [...prev, { role: 'assistant', content: getRandomError() }])
     } finally {
       setSending(false)
     }
