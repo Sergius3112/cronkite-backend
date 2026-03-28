@@ -72,7 +72,7 @@ const Articles = () => {
       {/* Title + add button */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Article Library</h2>
+          <h2 className="font-serif text-3xl font-bold tracking-tight">Article Library</h2>
           <p className="text-muted-foreground mt-1">Browse, analyse and assign articles to modules</p>
         </div>
         <Button onClick={() => setDialogOpen(true)} size="lg">

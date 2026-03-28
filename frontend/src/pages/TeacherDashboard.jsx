@@ -198,47 +198,6 @@ export default function TeacherDashboard() {
           <StatCard label="Pending Reviews"   value={stats.reviews}     red />
         </div>
 
-        {/* Create Module */}
-        <section className="bg-paper-dark border border-border rounded-xl p-5 mb-6">
-          <h3 className="text-xs font-semibold text-ink-light uppercase tracking-widest mb-4">New Module</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-            <Field label="Module Name">
-              <input
-                className="input-base" placeholder="e.g. Climate Science Claims"
-                value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              />
-            </Field>
-            <Field label="Focus Area">
-              <select className="input-base" value={form.focus_point} onChange={e => setForm(f => ({ ...f, focus_point: e.target.value }))}>
-                <option value="">Select a focus…</option>
-                {Object.entries(FOCUS_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </Field>
-            <Field label="Key Stage">
-              <select className="input-base" value={form.key_stage} onChange={e => setForm(f => ({ ...f, key_stage: e.target.value }))}>
-                <option value="">Select a key stage…</option>
-                {Object.entries(KS_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </Field>
-            <Field label="Description" className="sm:col-span-2">
-              <textarea
-                className="input-base resize-y min-h-[70px]"
-                placeholder="What should students pay attention to?"
-                value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              />
-            </Field>
-          </div>
-          {formError && <p className="text-xs text-red mb-3">{formError}</p>}
-          <div className="flex justify-end">
-            <button
-              onClick={createModule} disabled={creating}
-              className="btn-primary"
-            >
-              {creating ? <><Spinner /> Creating…</> : <><Plus size={14} /> Create Module</>}
-            </button>
-          </div>
-        </section>
-
         {/* Modules list */}
         <SectionHd>Your Modules</SectionHd>
 

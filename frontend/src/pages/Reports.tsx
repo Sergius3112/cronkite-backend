@@ -10,19 +10,12 @@ const PIE_COLORS = ['hsl(160, 60%, 40%)', 'hsl(210, 70%, 50%)', 'hsl(30, 80%, 50
 
 function StatCard({ icon: Icon, label, value, sub }: { icon: React.ElementType; label: string; value: string | number; sub?: string }) {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-4 p-5">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div>
-          <p className="text-2xl font-bold leading-none">{value}</p>
-          <p className="text-sm text-muted-foreground mt-0.5">{label}</p>
-          {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
-        </div>
-      </CardContent>
-    </Card>
-  );
+    <div style={{ background: '#1A1714', borderRadius: '10px', padding: '14px 16px' }}>
+      <p style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.6px', color: '#9E9488', marginBottom: '5px' }}>{label}</p>
+      <p style={{ fontFamily: "'Playfair Display', serif", fontSize: '26px', fontWeight: 700, color: '#F7F3EC', letterSpacing: '-1px', lineHeight: 1 }}>{value}</p>
+      {sub && <p style={{ fontSize: '10px', color: '#9E9488', marginTop: '2px' }}>{sub}</p>}
+    </div>
+  )
 }
 
 const Reports = () => {
@@ -137,7 +130,7 @@ const Reports = () => {
         {/* Title + filter */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">Class Reports</h2>
+            <h2 className="font-serif text-3xl font-bold tracking-tight">Class Reports</h2>
             <p className="text-muted-foreground mt-1">Track assignment progress and student engagement</p>
           </div>
           <Select value={moduleFilter} onValueChange={setModuleFilter}>
@@ -150,7 +143,7 @@ const Reports = () => {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
           <StatCard icon={ClipboardList} label="Total Assignments" value={totalAssignments} />
           <StatCard icon={CheckCircle} label="Completion Rate" value={`${completionRate}%`} sub={`${completedCount} of ${totalAssignments}`} />
           <StatCard icon={Users} label="Students" value={uniqueStudents} />

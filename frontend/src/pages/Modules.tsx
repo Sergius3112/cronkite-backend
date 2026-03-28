@@ -132,7 +132,7 @@ const Modules = () => {
         {/* Page title + create button */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">Modules</h2>
+            <h2 className="font-serif text-3xl font-bold tracking-tight">Modules</h2>
             <p className="text-muted-foreground mt-1">Manage your media literacy teaching modules</p>
           </div>
           <Button onClick={openCreate} size="lg">
