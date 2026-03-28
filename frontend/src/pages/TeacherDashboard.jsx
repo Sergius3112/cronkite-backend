@@ -183,10 +183,12 @@ export default function TeacherDashboard() {
     <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Welcome */}
         <div className="mb-6">
-          <h2 className="font-serif text-2xl text-ink">
+          <h2 className="font-serif text-ink" style={{ fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', marginBottom: '4px' }}>
             {firstName ? `${greeting}, ${firstName}` : 'Your Dashboard'}
           </h2>
-          <p className="text-xs text-ink-light mt-1">Manage modules, assign articles, review results.</p>
+          <p style={{ fontSize: '13px', color: '#7A746E', marginBottom: '0' }}>
+            {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} — manage modules, assign articles, review results
+          </p>
         </div>
 
         {/* Stats */}
@@ -230,7 +232,7 @@ export default function TeacherDashboard() {
         {loading && <div className="text-xs text-ink-light py-4">Loading assignments…</div>}
         {!loading && recentAssignments.length === 0
           ? <EmptyState title="No assignments yet" text="Add articles inside a module." />
-          : <div className="bg-paper-dark border border-border rounded-xl overflow-hidden">
+          : <div className="border border-border rounded-xl overflow-hidden">
               {recentAssignments.map((a, i) => (
                 <div key={a.id} className={`flex items-center gap-3 px-4 py-3 ${i < recentAssignments.length-1 ? 'border-b border-border/50' : ''}`}>
                   <span className="flex-1 text-sm text-ink truncate">{a.article_title || a.article_url || a.id}</span>
@@ -246,7 +248,7 @@ export default function TeacherDashboard() {
 
 function ModuleCard({ mod, expanded, assignments, results, onToggle, onAddAssignment, onLoadResults }) {
   return (
-    <div className="bg-paper-dark border border-border rounded-xl overflow-hidden">
+    <div className="border border-border rounded-xl overflow-hidden">
       <button
         onClick={onToggle}
         className="w-full flex items-start gap-3 p-4 text-left hover:bg-black/[0.02] transition-colors"
@@ -273,7 +275,7 @@ function ModuleCard({ mod, expanded, assignments, results, onToggle, onAddAssign
               ? <p className="text-xs text-ink-light italic mb-3">No articles assigned yet.</p>
               : <div className="flex flex-col gap-1.5 mb-4">
                   {assignments.map(a => (
-                    <div key={a.id} className="flex items-center gap-2 bg-paper border border-border rounded-lg px-3 py-2">
+                    <div key={a.id} className="flex items-center gap-2 border border-border rounded-lg px-3 py-2">
                       <span className="flex-1 text-sm text-ink truncate">{a.article_title || a.article_url}</span>
                       <StatusBadge status={a.status} />
                       {a.article_url && <a href={a.article_url} target="_blank" rel="noopener noreferrer" className="text-xs text-ink-light hover:text-red flex-shrink-0">↗</a>}
@@ -283,7 +285,7 @@ function ModuleCard({ mod, expanded, assignments, results, onToggle, onAddAssign
           }
 
           {/* Add assignment */}
-          <div className="bg-paper border border-border rounded-lg p-3 mb-4">
+          <div className="border border-border rounded-lg p-3 mb-4">
             <p className="text-[10px] font-semibold text-ink-light uppercase tracking-wider mb-2">Add Article</p>
             <div className="flex flex-wrap gap-2 items-end">
               <div className="flex-1 min-w-[120px]">

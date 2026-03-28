@@ -84,7 +84,7 @@ export function ArticleCard({ article, modules, onAssign, onApprove, onViewAnaly
             {focusAreas.map(fa => {
               const focus = getFocusArea(fa);
               return (
-                <Badge key={fa} variant="secondary" className={`text-[10px] border ${focus.colorClass}`}>
+                <Badge key={fa} variant="secondary" className="bg-[#F7F3EC] border border-[rgba(26,23,20,0.1)] text-[#1A1714] text-xs font-medium px-2 py-0.5 rounded-full">
                   {focus.label}
                 </Badge>
               );

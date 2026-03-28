@@ -20,8 +20,8 @@ export function ModuleCard({ module, onEdit, onArchive, onViewDetail }: ModuleCa
     <Card className="flex flex-col justify-between hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/60 shadow-sm">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${focus.colorClass}`}>
-            <Icon className="h-5 w-5" />
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#1A1714', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon style={{ width: '14px', height: '14px', color: '#F7F3EC' }} />
           </div>
           <Badge variant="outline" className="text-xs font-medium shrink-0">
             {module.key_stage}
@@ -35,7 +35,7 @@ export function ModuleCard({ module, onEdit, onArchive, onViewDetail }: ModuleCa
       <CardContent className="pb-3">
         <p className="text-sm text-muted-foreground line-clamp-2">{module.description}</p>
         <div className="mt-3">
-          <Badge variant="secondary" className={`text-xs border ${focus.colorClass}`}>
+          <Badge variant="secondary" className="bg-[#F7F3EC] border border-[rgba(26,23,20,0.1)] text-[#1A1714] text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full">
             {focus.label}
           </Badge>
         </div>
