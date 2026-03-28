@@ -1,10 +1,9 @@
 import { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Search, FileText } from 'lucide-react';
+import { Search, FileText } from 'lucide-react';
 import { useArticles } from '@/hooks/useArticles';
 import { useModules } from '@/hooks/useModules';
 import { ArticleCard } from '@/components/articles/ArticleCard';
@@ -40,6 +39,7 @@ const Articles = () => {
   const [focusFilter, setFocusFilter] = useState('all');
   const [tab, setTab] = useState('analysed');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [analyseUrl, setAnalyseUrl] = useState('');
   const [analysisArticle, setAnalysisArticle] = useState<Article | null>(null);
   const [assignArticle, setAssignArticle] = useState<Article | null>(null);
 
@@ -69,16 +69,35 @@ const Articles = () => {
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Title + add button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h2 className="font-serif text-3xl font-bold tracking-tight">Article Library</h2>
-          <p className="text-muted-foreground mt-1">Browse, analyse and assign articles to modules</p>
-        </div>
-        <Button onClick={() => setDialogOpen(true)} size="lg">
-          <Plus className="mr-2 h-4 w-4" /> Add Content
-        </Button>
+      {/* Section 1 — Analyse Content */}
+      <h2 className="font-serif" style={{ fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', marginBottom: '4px', color: '#1A1714' }}>
+        Analyse Content
+      </h2>
+      <p style={{ fontSize: '13px', color: '#7A746E', marginBottom: '20px' }}>
+        Paste any article URL, YouTube link, or social media post
+      </p>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+        <input
+          style={{ flex: 1, background: '#fff', border: '1px solid rgba(26,23,20,0.12)', borderRadius: '8px', padding: '10px 14px', fontSize: '14px', fontFamily: "'DM Sans', sans-serif", color: '#1A1714', outline: 'none' }}
+          placeholder="Paste article URL, YouTube link, or social media post…"
+          value={analyseUrl}
+          onChange={e => setAnalyseUrl(e.target.value)}
+        />
+        <button
+          onClick={() => setDialogOpen(true)}
+          style={{ background: 'rgb(196,30,58)', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '14px', fontWeight: 600, fontFamily: "'DM Sans', sans-serif", cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >
+          Ask Cronkite
+        </button>
       </div>
+
+      {/* Section 2 — Article Library */}
+      <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', fontWeight: 700, color: '#1A1714', marginBottom: '4px', marginTop: '32px' }}>
+        Article Library
+      </h3>
+      <p style={{ fontSize: '13px', color: '#7A746E', marginBottom: '16px' }}>
+        Browse, analyse and assign articles to modules
+      </p>
 
       {/* Tabs */}
       <Tabs value={tab} onValueChange={setTab} className="mb-6">
