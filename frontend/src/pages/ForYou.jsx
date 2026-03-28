@@ -4,7 +4,7 @@ import { sb } from '../lib/supabase'
 const SUPPORTED_DOMAINS = [
   'bbc.co.uk', 'bbc.com', 'theguardian.com', 'thetimes.co.uk',
   'dailymail.co.uk', 'independent.co.uk', 'telegraph.co.uk',
-  'sky.com', 'reuters.com', 'apnews.com',
+  'sky.com', 'reuters.com', 'apnews.com', 'gbnews.com',
 ]
 
 function isSupportedUrl(url) {
