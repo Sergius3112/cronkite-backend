@@ -112,16 +112,20 @@ export default function StudentDashboard() {
   }
 
   const firstName = (session?.user?.user_metadata?.full_name || session?.user?.email || '').split(' ')[0]
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const uniqueModules = new Set([...pending, ...completed].map(a => a.module_id)).size
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
         {/* Welcome */}
         <div className="mb-6">
-          <h2 className="font-serif text-2xl text-ink">
-            {firstName ? `Hello, ${firstName}` : 'Your Assignments'}
+          <h2 className="font-serif text-ink" style={{ fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', marginBottom: '4px' }}>
+            {firstName ? `${greeting}, ${firstName}` : 'Your Assignments'}
           </h2>
-          <p className="text-xs text-ink-light mt-1">Articles assigned by your teacher for fact-checking.</p>
+          <p style={{ fontSize: '13px', color: '#7A746E', marginBottom: '22px' }}>
+            {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} — articles assigned by your teacher
+          </p>
         </div>
 
         {/* Stats */}
@@ -134,17 +138,16 @@ export default function StudentDashboard() {
         {error && <InlineError msg={error} onRetry={() => session && loadAll(session)} />}
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-5 bg-paper-dark border border-border rounded-lg p-1 w-fit">
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
           {[['pending','Pending'],['completed','Completed']].map(([id, label]) => (
-            <button
-              key={id} onClick={() => setTab(id)}
-              className={`px-4 py-1.5 rounded text-sm font-semibold transition-all ${
-                tab === id
-                  ? 'bg-paper text-ink shadow-sm'
-                  : 'text-ink-light hover:text-ink'
-              }`}
-            >
-              {label} <span className={`ml-1 text-[10px] font-bold ${tab===id?'text-red':'text-ink-light'}`}>
+            <button key={id} onClick={() => setTab(id)} style={{
+              padding: '7px 16px', borderRadius: '7px', fontSize: '12px', fontWeight: 500,
+              border: '1px solid rgba(26,23,20,0.1)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+              background: tab === id ? '#1A1714' : '#fff',
+              color: tab === id ? '#F7F3EC' : '#7A746E',
+              borderColor: tab === id ? '#1A1714' : 'rgba(26,23,20,0.1)',
+            }}>
+              {label} <span style={{ fontSize: '10px', fontWeight: 700, marginLeft: '4px', color: tab === id ? '#C8B89A' : 'rgb(196,30,58)' }}>
                 {id === 'pending' ? pending.length : completed.length}
               </span>
             </button>
@@ -226,11 +229,12 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
   const score = article?.analysis?.overall_credibility_score ?? article?.analysis?.credibility_score
 
   return (
-    <div className={`bg-paper-dark border rounded-xl p-4 flex items-start gap-3 transition-opacity ${done ? 'opacity-70 border-border/50' : 'border-border'}`}>
-      <div className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 border-2 ${done ? 'bg-green border-green' : 'bg-border border-border'}`} />
+    <div style={{ background: '#fff', border: '1px solid rgba(26,23,20,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '10px', opacity: done ? 0.7 : 1 }}
+      className="flex items-start gap-3">
+      <div style={{ width: '10px', height: '10px', borderRadius: '50%', flexShrink: 0, marginTop: '4px', border: '2px solid', background: done ? '#2E7D32' : 'rgba(26,23,20,0.08)', borderColor: done ? '#2E7D32' : 'rgba(26,23,20,0.2)' }} />
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2 mb-0.5">
-          <p className="text-sm font-semibold text-ink truncate">{title}</p>
+          <p style={{ fontSize: '14px', fontWeight: 600, color: '#1A1714', lineHeight: 1.4, flex: 1 }}>{title}</p>
           {score != null && (
             <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${score >= 75 ? 'bg-green-100 text-green-800' : score >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}`}>
               {score}%
@@ -242,7 +246,7 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
         {mod && (
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <span className="text-[10px] font-semibold text-ink-mid">{mod.title}</span>
-            {mod.focus_point && <span className="bg-paper border border-border text-[10px] font-semibold text-ink-mid uppercase tracking-wide px-2 py-0.5 rounded-full">{FOCUS_LABELS[mod.focus_point] || mod.focus_point}</span>}
+            {mod.focus_point && <span style={{ fontSize: '9px', background: '#F7F3EC', border: '1px solid rgba(26,23,20,0.1)', color: '#1A1714', borderRadius: '20px', padding: '2px 8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{FOCUS_LABELS[mod.focus_point] || mod.focus_point}</span>}
           </div>
         )}
         {a.due_date && <p className="text-[10px] text-ink-light mb-2">Due {format(new Date(a.due_date), 'd MMM yyyy')}</p>}
@@ -250,7 +254,7 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
           {article?.analysis && (
             <button
               onClick={onViewAnalysis}
-              className="inline-flex items-center gap-1.5 border border-border hover:border-ink text-ink-mid hover:text-ink text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+              style={{ background: 'transparent', color: '#1A1714', border: '1px solid rgba(26,23,20,0.18)', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
             >
               View Analysis
             </button>
@@ -259,7 +263,7 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
             <a
               href={articleUrl}
               target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 bg-red hover:bg-red-dark text-paper text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:-translate-y-px"
+              style={{ background: 'rgb(196,30,58)', color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
             >
               Open Article
             </a>
@@ -267,7 +271,7 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
           {!done && (
             <button
               onClick={onComplete} disabled={completing}
-              className="inline-flex items-center gap-1.5 border border-border hover:border-ink text-ink-mid hover:text-ink text-xs font-semibold px-3 py-1.5 rounded-lg transition-all disabled:opacity-40"
+              style={{ background: 'transparent', color: '#7A746E', border: '1px solid rgba(26,23,20,0.12)', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
             >
               {completing ? <><Spinner />Saving…</> : "I've read this"}
             </button>
@@ -285,9 +289,9 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
 
 function StatCard({ label, value }) {
   return (
-    <div className="bg-paper-dark border border-border rounded-xl p-4">
-      <p className="text-[10px] font-semibold text-ink-light uppercase tracking-widest mb-1">{label}</p>
-      <p className="font-serif text-3xl text-ink leading-none">{value}</p>
+    <div style={{ background: '#1A1714', borderRadius: '10px', padding: '14px 16px' }}>
+      <p style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.6px', color: '#9E9488', marginBottom: '5px' }}>{label}</p>
+      <p style={{ fontFamily: "'Playfair Display', serif", fontSize: '26px', fontWeight: 700, color: '#F7F3EC', letterSpacing: '-1px', lineHeight: 1 }}>{value}</p>
     </div>
   )
 }
@@ -304,9 +308,9 @@ function InlineError({ msg, onRetry }) {
 
 function EmptyState({ title, text }) {
   return (
-    <div className="text-center py-10 text-ink-light">
-      <p className="font-serif text-base text-ink mb-1">{title}</p>
-      <p className="text-xs">{text}</p>
+    <div style={{ textAlign: 'center', padding: '40px 0', color: '#B0A89E' }}>
+      <p style={{ fontFamily: "'Playfair Display', serif", fontSize: '15px', color: '#1A1714', marginBottom: '4px' }}>{title}</p>
+      <p style={{ fontSize: '12px' }}>{text}</p>
     </div>
   )
 }

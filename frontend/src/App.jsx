@@ -31,7 +31,9 @@ export default function App() {
         <Route path="/articles" element={<Shell><Articles /></Shell>} />
         <Route path="/reports"  element={<Shell><Reports /></Shell>} />
         <Route path="/updates"          element={<Shell><Updates /></Shell>} />
-        <Route path="/student/modules"  element={<Shell><StudentModules /></Shell>} />
+        <Route path="/student/modules"   element={<Shell><StudentModules /></Shell>} />
+        <Route path="/student/briefing" element={<Shell><Updates /></Shell>} />
+        <Route path="/student/for-you"  element={<Shell><ForYou /></Shell>} />
         <Route path="/for-you"          element={<Shell><ForYou /></Shell>} />
         <Route path="*"        element={<Navigate to="/" replace />} />
       </Routes>

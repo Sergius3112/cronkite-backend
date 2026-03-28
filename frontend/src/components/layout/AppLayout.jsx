@@ -20,9 +20,13 @@ const TEACHER_NAV_CONTENT = [
   { label: 'For You',         href: '/for-you',   icon: Sparkles },
 ]
 
-const STUDENT_NAV = [
+const STUDENT_NAV_WORK = [
   { label: 'Student Inbox', href: '/student',         icon: Inbox    },
-  { label: 'Modules',       href: '/student/modules', icon: BookOpen },
+  { label: 'My Modules',    href: '/student/modules', icon: BookOpen },
+]
+const STUDENT_NAV_CRONKITE = [
+  { label: 'Daily Briefing', href: '/student/briefing', icon: FileText },
+  { label: 'For You',        href: '/student/for-you',  icon: Sparkles },
 ]
 
 function CronkiteWordmark() {
@@ -48,7 +52,6 @@ export function AppLayout({ children }) {
 
   // Nav is determined entirely by the current route
   const isStudentRoute = pathname === '/student' || pathname.startsWith('/student/')
-  const items = STUDENT_NAV
 
   async function signOut() {
     await sb.auth.signOut()
@@ -72,13 +75,31 @@ export function AppLayout({ children }) {
         {/* Nav items */}
         {isStudentRoute ? (
           <nav className="flex-1 px-3 py-3 overflow-y-auto">
-            {items.map(({ label, href, icon: Icon }) => {
+            <p style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#B0A89E', padding: '12px 12px 5px' }}>My Work</p>
+            {STUDENT_NAV_WORK.map(({ label, href, icon: Icon }) => {
               const active = pathname === href
               return (
-                <Link
-                  key={href}
-                  to={href}
-                  onClick={() => setMobileOpen(false)}
+                <Link key={href} to={href} onClick={() => setMobileOpen(false)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '9px',
+                    padding: '8px 12px', fontSize: '13px', borderRadius: '0',
+                    borderLeft: active ? '2px solid rgb(196,30,58)' : '2px solid transparent',
+                    background: active ? '#F7F3EC' : 'transparent',
+                    color: active ? '#1A1714' : '#7A746E',
+                    fontWeight: active ? 500 : 400,
+                    textDecoration: 'none', transition: 'all 0.1s',
+                  }}
+                >
+                  <Icon style={{ width: '14px', height: '14px', flexShrink: 0 }} />
+                  {label}
+                </Link>
+              )
+            })}
+            <p style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#B0A89E', padding: '14px 12px 5px' }}>Cronkite</p>
+            {STUDENT_NAV_CRONKITE.map(({ label, href, icon: Icon }) => {
+              const active = pathname === href
+              return (
+                <Link key={href} to={href} onClick={() => setMobileOpen(false)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '9px',
                     padding: '8px 12px', fontSize: '13px', borderRadius: '0',
