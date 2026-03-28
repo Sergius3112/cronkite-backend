@@ -1,3 +1,4 @@
+from playwright.async_api import async_playwright
 from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
@@ -1778,6 +1779,50 @@ async def api_briefing_send(
 
 # ── Read Article — scrape article content for the in-app reader ────────────────
 
+async def scrape_with_playwright(url: str) -> dict:
+    """Headless browser fallback for JS-rendered articles."""
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            )
+            page = await browser.new_page(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            await page.goto(url, wait_until='networkidle', timeout=15000)
+
+            # Try selectors in priority order
+            content = ''
+            for selector in ['article', '[class*="article-body"]', '[class*="article__body"]', '[class*="story-body"]', 'main']:
+                try:
+                    el = await page.query_selector(selector)
+                    if el:
+                        text = await el.inner_text()
+                        if len(text) > 200:
+                            content = text
+                            break
+                except Exception:
+                    continue
+
+            # Fallback to all paragraphs
+            if not content:
+                paragraphs = await page.query_selector_all('p')
+                texts = []
+                for par in paragraphs:
+                    t = await par.inner_text()
+                    if len(t.strip()) > 50:
+                        texts.append(t.strip())
+                content = '\n\n'.join(texts)
+
+            title = await page.title()
+            await browser.close()
+            return {'content': content, 'title': title}
+    except Exception as e:
+        logger.error(f"Playwright scrape error: {e}")
+        return {'content': '', 'title': ''}
+
+
 @app.get("/api/read-article")
 async def read_article(url: str = ""):
     """Fetch and extract article text/title for the Cronkite Article Reader."""
@@ -1856,17 +1901,19 @@ async def read_article(url: str = ""):
         except Exception:
             pass
 
-    # Detect blocked / JS-gated articles
+    # Playwright fallback for JS-rendered or blocked pages
     if not content or len(content) < 200:
-        blocked_signals = [
-            "enable javascript" in html.lower(),
-            "you need to enable javascript" in html.lower(),
-            "please enable cookies" in html.lower(),
-            "subscribe to continue" in html.lower(),
-        ]
-        if any(blocked_signals) or len(content or "") < 200:
-            return {"title": title or source, "content": "", "source": source, "url": url, "blocked": True,
-                    "error": "This article could not be extracted — it may require JavaScript or a subscription."}
+        logger.info(f"httpx+BS4 failed for {url}, trying Playwright...")
+        pw_result = await scrape_with_playwright(url)
+        if pw_result['content'] and len(pw_result['content']) >= 200:
+            content = pw_result['content']
+            if not title:
+                title = pw_result['title']
+
+    # If still empty after all attempts, return blocked
+    if not content or len(content) < 200:
+        return {"title": title or source, "content": "", "source": source, "url": url, "blocked": True,
+                "error": "This article could not be extracted — it may require JavaScript or a subscription."}
 
     return {"title": title, "content": content, "source": source, "url": url}
 
