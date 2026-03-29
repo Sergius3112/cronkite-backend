@@ -17,6 +17,26 @@ const CRONKITE_ERRORS = [
   "Deadline pressure. Back in a moment.",
 ]
 
+const LOADING_PHRASES = [
+  "Scribbling first draft…",
+  "Conferring with sources…",
+  "Checking the facts…",
+  "Consulting the editor…",
+  "Reviewing the evidence…",
+  "Reading between the lines…",
+  "Following the story…",
+  "Asking difficult questions…",
+]
+
+const WELCOME_MESSAGES = [
+  "Hi! I've read this article. Ask me anything about its bias, persuasion techniques, or the claims it makes.",
+  "Article loaded. What would you like to know — bias, credibility, or persuasion techniques?",
+  "I've gone through this piece. Ask me anything — I'm here to help you think critically about it.",
+  "Ready when you are. What do you want to dig into — the language, the framing, or the sources?",
+  "This one's interesting. Ask me about the bias, the rhetoric, or anything that caught your eye.",
+  "All read. What's on your mind — the claims, the framing, or who's behind this story?",
+]
+
 function getRandomError() {
   return CRONKITE_ERRORS[Math.floor(Math.random() * CRONKITE_ERRORS.length)]
 }
@@ -29,10 +49,12 @@ export default function ArticleReader() {
   const [article, setArticle] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [chatReady, setChatReady] = useState(false)
 
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! I've read this article. Ask me anything about its bias, persuasion techniques, or the claims it makes." }
-  ])
+  const [welcomeMessage] = useState(
+    WELCOME_MESSAGES[Math.floor(Math.random() * WELCOME_MESSAGES.length)]
+  )
+  const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [chatHistory, setChatHistory] = useState([])
   const [sending, setSending] = useState(false)
@@ -50,9 +72,21 @@ export default function ArticleReader() {
         if (data.error && !data.content) { setError(data.error) }
         else { setArticle(data) }
         setLoading(false)
+        setChatReady(true)
       })
       .catch(() => { setError('Failed to load article'); setLoading(false) })
   }, [url])
+
+  useEffect(() => {
+    if (!loading) return
+    let i = 0
+    const interval = setInterval(() => {
+      i = (i + 1) % LOADING_PHRASES.length
+      const el = document.getElementById('loading-phrase')
+      if (el) el.textContent = LOADING_PHRASES[i]
+    }, 1500)
+    return () => clearInterval(interval)
+  }, [loading])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -123,10 +157,22 @@ export default function ArticleReader() {
         {/* Article column */}
         <div style={{ overflowY: 'auto', background: '#ffffff', padding: '32px 48px' }}>
           {loading && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
-              <div style={{ width: '24px', height: '24px', border: '2px solid rgba(26,23,20,0.1)', borderTop: '2px solid rgb(196,30,58)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-              <p style={{ fontSize: '13px', color: '#7A746E', marginTop: '14px' }}>Loading article…</p>
-              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', gap: '24px' }}>
+              <div style={{ position: 'relative', width: '80px', height: '100px' }}>
+                <div style={{ position: 'absolute', width: '70px', height: '90px', background: '#F7F3EC', border: '1px solid rgba(26,23,20,0.15)', borderRadius: '3px', transformOrigin: 'left center', animation: 'flipPage 1.5s ease-in-out infinite' }}>
+                  <div style={{ padding: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ height: '6px', background: 'rgba(26,23,20,0.2)', borderRadius: '2px', width: '90%' }} />
+                    <div style={{ height: '4px', background: 'rgba(26,23,20,0.1)', borderRadius: '2px', width: '70%' }} />
+                    <div style={{ height: '4px', background: 'rgba(26,23,20,0.1)', borderRadius: '2px', width: '80%' }} />
+                    <div style={{ height: '4px', background: 'rgba(26,23,20,0.1)', borderRadius: '2px', width: '60%' }} />
+                  </div>
+                </div>
+                <div style={{ position: 'absolute', width: '70px', height: '90px', background: '#EDE9E2', border: '1px solid rgba(26,23,20,0.1)', borderRadius: '3px', top: '5px', left: '5px', zIndex: -1 }} />
+              </div>
+              <div id="loading-phrase" style={{ fontSize: '13px', color: '#7A746E', fontFamily: "'DM Sans', sans-serif" }}>
+                Scribbling first draft…
+              </div>
+              <style>{`@keyframes flipPage{0%,100%{transform:rotateY(0deg)}50%{transform:rotateY(-20deg)}}`}</style>
             </div>
           )}
 
@@ -187,6 +233,21 @@ export default function ArticleReader() {
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {chatReady && (
+              <div style={{
+                alignSelf: 'flex-start',
+                maxWidth: '85%',
+                background: 'rgba(247,243,236,0.08)',
+                color: '#F7F3EC',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                fontSize: '13px',
+                lineHeight: 1.5,
+                whiteSpace: 'pre-wrap',
+              }}>
+                {welcomeMessage}
+              </div>
+            )}
             {messages.map((msg, i) => (
               <div key={i} style={{
                 alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',

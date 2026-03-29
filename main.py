@@ -1929,19 +1929,6 @@ FOCUS_KEYWORDS = {
 }
 
 
-SUPPORTED_DOMAINS = [
-    "bbc.co.uk", "bbc.com",
-    "theguardian.com",
-    "thetimes.co.uk",
-    "dailymail.co.uk",
-    "independent.co.uk",
-    "telegraph.co.uk",
-    "sky.com",
-    "reuters.com",
-    "apnews.com",
-]
-
-
 def generate_for_you_suggestions(user_id: str, modules: list) -> list:
     """For each module (max 3), use Tavily to find recent UK news articles from supported domains."""
     tavily = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
@@ -1954,8 +1941,7 @@ def generate_for_you_suggestions(user_id: str, modules: list) -> list:
 
         try:
             results = tavily.search(
-                query=f"UK news {keywords}",
-                include_domains=SUPPORTED_DOMAINS,
+                query=f"UK news {keywords} {mod_title}",
                 max_results=5,
                 days=7,
             )

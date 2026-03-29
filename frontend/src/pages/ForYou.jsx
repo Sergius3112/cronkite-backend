@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react'
 import { sb } from '../lib/supabase'
 
-const SUPPORTED_DOMAINS = [
-  'bbc.co.uk', 'bbc.com', 'theguardian.com', 'thetimes.co.uk',
-  'dailymail.co.uk', 'independent.co.uk', 'telegraph.co.uk',
-  'sky.com', 'reuters.com', 'apnews.com', 'gbnews.com',
-]
-
-function isSupportedUrl(url) {
-  try { return SUPPORTED_DOMAINS.some(d => new URL(url).hostname.includes(d)) } catch { return false }
+function isArticleUrl(url) {
+  try {
+    const path = new URL(url).pathname
+    return path.length > 1 // has a path beyond just "/"
+  } catch {
+    return false
+  }
 }
 
 const BIAS_COLORS = {
@@ -68,7 +67,7 @@ export default function ForYou() {
               <div style={{ fontSize: '12px', color: '#7A746E', marginBottom: '4px' }}>{s.source}</div>
               <div style={{ fontSize: '12px', color: '#7A746E', marginBottom: '6px', lineHeight: 1.5 }}>{s.reason}</div>
               {s.module_title && <div style={{ fontSize: '10px', color: '#B0A89E', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>{s.module_title}</div>}
-              {isSupportedUrl(s.url) ? (
+              {isArticleUrl(s.url) ? (
                 <a href={`/read?url=${encodeURIComponent(s.url)}`}
                   style={{ display: 'inline-block', background: 'rgb(196,30,58)', color: '#fff', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 600, textDecoration: 'none', fontFamily: "'DM Sans', sans-serif" }}>
                   Read with Cronkite →
