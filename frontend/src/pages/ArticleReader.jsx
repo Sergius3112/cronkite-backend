@@ -62,6 +62,9 @@ export default function ArticleReader() {
   const [welcomeMessage] = useState(
     WELCOME_MESSAGES[Math.floor(Math.random() * WELCOME_MESSAGES.length)]
   )
+  const [blockedMessage] = useState(
+    BLOCKED_MESSAGES[Math.floor(Math.random() * BLOCKED_MESSAGES.length)]
+  )
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [chatHistory, setChatHistory] = useState([])
@@ -258,7 +261,7 @@ export default function ArticleReader() {
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {chatReady && (
+            {chatReady && !article?.blocked && article?.content && (
               <div style={{
                 alignSelf: 'flex-start',
                 maxWidth: '85%',
@@ -270,16 +273,26 @@ export default function ArticleReader() {
                 lineHeight: 1.5,
                 whiteSpace: 'pre-wrap',
               }}>
-                {(article?.blocked || !article?.content)
-                  ? BLOCKED_MESSAGES[Math.floor(Math.random() * BLOCKED_MESSAGES.length)]
-                  : welcomeMessage
-                }
-                {(article?.blocked || !article?.content) && (
-                  <a href={article?.url || url} target="_blank" rel="noopener noreferrer"
-                    style={{ display: 'block', marginTop: '8px', fontSize: '11px', color: 'rgb(196,30,58)', textDecoration: 'none' }}>
-                    Open original →
-                  </a>
-                )}
+                {welcomeMessage}
+              </div>
+            )}
+            {chatReady && (article?.blocked || !article?.content) && (
+              <div style={{
+                alignSelf: 'flex-start',
+                maxWidth: '85%',
+                background: 'rgba(247,243,236,0.08)',
+                color: '#F7F3EC',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                fontSize: '13px',
+                lineHeight: 1.5,
+                whiteSpace: 'pre-wrap',
+              }}>
+                {blockedMessage}
+                <a href={article?.url || url} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'block', marginTop: '8px', fontSize: '11px', color: 'rgb(196,30,58)', textDecoration: 'none' }}>
+                  Open original →
+                </a>
               </div>
             )}
             {messages.map((msg, i) => (
