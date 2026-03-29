@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react'
 import { sb } from '../lib/supabase'
 
 const BLOCKED_DOMAINS = [
-  'x.com', 'twitter.com',
-  'instagram.com',
   'tiktok.com',
   'facebook.com',
   'linkedin.com',

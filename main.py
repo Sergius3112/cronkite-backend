@@ -1823,14 +1823,58 @@ async def scrape_with_playwright(url: str) -> dict:
         return {'content': '', 'title': ''}
 
 
+async def fetch_article_with_claude(url: str) -> dict:
+    """Last-resort fallback: use Claude web search to fetch article content."""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+
+        response = client.messages.create(
+            model='claude-sonnet-4-5',
+            max_tokens=2000,
+            tools=[{"type": "web_search_20250305", "name": "web_search"}],
+            messages=[{
+                "role": "user",
+                "content": f"""Fetch the full text content of this URL: {url}
+
+Return ONLY a JSON object with no markdown, no preamble:
+{{
+  "title": "article or post title",
+  "content": "full text content, as much as possible",
+  "source": "publication or platform name",
+  "author": "author name if available"
+}}
+
+If this is a tweet or social media post, include the full post text and any context. If paywalled, include whatever is publicly accessible."""
+            }]
+        )
+
+        result_text = ''
+        for block in response.content:
+            if hasattr(block, 'text'):
+                result_text += block.text
+
+        result_text = result_text.strip()
+        if result_text.startswith('```'):
+            result_text = result_text.split('```')[1]
+            if result_text.startswith('json'):
+                result_text = result_text[4:]
+
+        parsed = json.loads(result_text.strip())
+        return parsed
+    except Exception as e:
+        logger.error(f"Claude fetch error: {e}")
+        return {}
+
+
 @app.get("/api/read-article")
 async def read_article(url: str = ""):
     """Fetch and extract article text/title for the Cronkite Article Reader."""
     if not url:
         return JSONResponse({"error": "Missing url parameter"}, status_code=400)
 
-    # Block domains that will never work (native app only)
-    BLOCKED_DOMAINS = ['x.com', 'twitter.com', 'instagram.com', 'tiktok.com', 'facebook.com', 'linkedin.com']
+    # Block domains that are genuinely inaccessible
+    BLOCKED_DOMAINS = ['tiktok.com', 'facebook.com', 'linkedin.com']
     from urllib.parse import urlparse
     parsed = urlparse(url)
     hostname = (parsed.netloc or '').replace('www.', '')
@@ -1844,91 +1888,81 @@ async def read_article(url: str = ""):
             "error": "This platform requires a native app to access. Use the Cronkite app when available."
         })
 
-    # Extract source from hostname
     try:
-        source = parsed.hostname.replace('www.', '') if parsed.hostname else url
-    except Exception:
-        source = url
+        content = ''
+        title = ''
+        source = parsed.netloc.replace('www.', '') if parsed.netloc else url
 
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            html = resp.text
-    except Exception as e:
-        return JSONResponse({"title": "", "content": "", "source": source, "url": url, "error": f"Could not fetch URL: {e}"})
-
-    title = ""
-    content = ""
-
-    # newspaper3k (best for news articles)
-    try:
-        from newspaper import Article
-        article = Article(url)
-        article.set_html(html)
-        article.parse()
-        if article.text and len(article.text) >= 100:
-            title = article.title or ""
-            content = article.text
-    except Exception:
-        pass
-
-    # BeautifulSoup fallback with multi-selector approach
-    if not content or len(content) < 100:
+        # Step 1: httpx + BeautifulSoup
         try:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(html, "html.parser")
-            # Extract title
-            if not title:
-                og_title = soup.find("meta", property="og:title")
-                if og_title and og_title.get("content"):
-                    title = og_title["content"]
-                elif soup.title:
-                    title = soup.title.get_text(strip=True)
-            # Remove non-content tags
-            for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form", "iframe", "noscript"]):
-                tag.decompose()
-            # Try multiple selectors for article body
-            selectors = [
-                "article",
-                "[class*='article-body']",
-                "[class*='story-body']",
-                "[class*='post-content']",
-                "[class*='entry-content']",
-                "[itemprop='articleBody']",
-                "main",
-                "[role='main']",
-            ]
-            container = None
-            for sel in selectors:
-                container = soup.select_one(sel)
-                if container:
-                    break
-            paragraphs = container.find_all("p") if container else soup.find_all("p")
-            text = "\n\n".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20)
-            if len(text) >= 100:
-                content = text
-        except Exception:
-            pass
+            async with httpx.AsyncClient(timeout=10, follow_redirects=True, headers={
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            }) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                title = soup.find('title').get_text(strip=True) if soup.find('title') else ''
 
-    # Playwright fallback for JS-rendered or blocked pages
-    if not content or len(content) < 200:
-        logger.info(f"httpx+BS4 failed for {url}, trying Playwright...")
-        pw_result = await scrape_with_playwright(url)
-        if pw_result['content'] and len(pw_result['content']) >= 200:
-            content = pw_result['content']
-            if not title:
-                title = pw_result['title']
+                selectors = ['article', '[class*="article-body"]', '[class*="article__body"]',
+                            '[class*="story-body"]', '[class*="content-body"]', '[class*="post-content"]',
+                            '[class*="entry-content"]', '[itemprop="articleBody"]', 'main', '[role="main"]']
 
-    # If still empty after all attempts, return blocked
-    if not content or len(content) < 200:
-        return {"title": title or source, "content": "", "source": source, "url": url, "blocked": True,
-                "error": "This article could not be extracted — it may require JavaScript or a subscription."}
+                for selector in selectors:
+                    elements = soup.select(selector)
+                    if elements:
+                        text = ' '.join(el.get_text(separator=' ', strip=True) for el in elements)
+                        if len(text) > 200:
+                            content = text
+                            break
 
-    return {"title": title, "content": content, "source": source, "url": url}
+                if not content:
+                    paragraphs = soup.find_all('p')
+                    content = ' '.join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 50)
+        except Exception as e:
+            logger.info(f"httpx failed for {url}: {e}")
+
+        # Step 2: Playwright (JS-rendered sites)
+        if not content or len(content) < 200 or 'javascript is disabled' in content.lower():
+            logger.info(f"Trying Playwright for {url}")
+            playwright_result = await scrape_with_playwright(url)
+            if playwright_result.get('content') and len(playwright_result['content']) > 200:
+                content = playwright_result['content']
+                if not title:
+                    title = playwright_result.get('title', '')
+
+        # Step 3: Claude web search (paywalled/blocked — used sparingly)
+        if not content or len(content) < 200:
+            logger.info(f"Trying Claude web search for {url}")
+            claude_result = await fetch_article_with_claude(url)
+            if claude_result.get('content') and len(claude_result['content']) > 200:
+                content = claude_result['content']
+                if not title:
+                    title = claude_result.get('title', '')
+                if claude_result.get('source'):
+                    source = claude_result['source']
+
+        # Final check
+        if not content or len(content) < 200:
+            return JSONResponse({
+                "title": title or url,
+                "content": None,
+                "source": source,
+                "url": url,
+                "blocked": True,
+                "error": "Could not extract content from this URL."
+            })
+
+        return JSONResponse({
+            "title": title,
+            "content": content,
+            "source": source,
+            "url": url
+        })
+
+    except Exception as e:
+        logger.error(f"read-article error: {e}")
+        return JSONResponse({"blocked": True, "url": url, "error": str(e)})
 
 
 # ── For You — AI-suggested articles matched to student modules ────────────────

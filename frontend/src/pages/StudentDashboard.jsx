@@ -6,8 +6,6 @@ import { format } from 'date-fns'
 import { ArticleAnalysisCard } from '../components/articles/ArticleAnalysisCard'
 
 const BLOCKED_DOMAINS = [
-  'x.com', 'twitter.com',
-  'instagram.com',
   'tiktok.com',
   'facebook.com',
   'linkedin.com',
