@@ -14,6 +14,8 @@ BASE_DIR = Path(__file__).parent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 from typing import Optional
+from urllib.parse import urlparse
+from scoring import calculate_credibility_score, calculate_bias_score, get_entity_trust, auto_populate_entity
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -911,6 +913,9 @@ Return ONLY valid JSON with this exact structure:
 
   "credibility_score": 0-100,
   "credibility_reasoning": "2-3 sentences explaining the score with specific evidence",
+  "claim_verifiability_score": 0-100,
+  "language_neutrality_score": 0-100,
+  "authorship_transparency_score": 0-100,
   "goal": "The underlying communicative goal of this content — what is it ultimately trying to make the reader think, feel or do?",
   "technique": "The primary rhetorical or linguistic technique used to achieve that goal — include specific examples of loaded or marked phrases (e.g. 'Afghan knifeman', 'benefit scroungers', 'coastal elites') and explain their effect",
   "conclusion": "What a critical reader should conclude about this content — its reliability, its agenda, and how it should be read",
@@ -918,6 +923,10 @@ Return ONLY valid JSON with this exact structure:
   "bias_direction": -100 to +100,
   "bias_intensity": 0-100,
   "bias_reasoning": "2-3 sentences explaining bias with specific textual examples",
+  "lexical_bias_score": -100 to +100,
+  "source_selection_score": -100 to +100,
+  "narrative_framing_score": -100 to +100,
+  "omission_score": -100 to +100,
 
   "creator_profile": {{
     "name": "author or creator name",
@@ -972,6 +981,15 @@ Return ONLY valid JSON with this exact structure:
   "report_summary": "A 5-7 sentence executive summary written with the authority of a language and literature scholar — covering the content's goal, its primary techniques, the credibility of its source and creator, and what a critical reader should take away. Suitable for a teacher to read before assigning this to students, or for an individual to read as part of their media diet audit."
 }}
 
+Please include these additional scores in your JSON response (all 0-100 unless noted):
+- claim_verifiability_score: how verifiable are the claims made (0-100)
+- language_neutrality_score: how neutral is the language used (0-100)
+- authorship_transparency_score: how transparent is authorship/funding (0-100)
+- lexical_bias_score: loaded language bias (-100 left to +100 right)
+- source_selection_score: balance of sources quoted (-100 to +100)
+- narrative_framing_score: framing bias (-100 to +100)
+- omission_score: what perspective is missing (-100 to +100)
+
 IMPORTANT: Your entire response must be ONLY the JSON object above. No preamble, no explanation, no markdown fences. Start with {{ and end with }}."""
 
     client = _anthropic.Anthropic(api_key=api_key)
@@ -993,6 +1011,30 @@ IMPORTANT: Your entire response must be ONLY the JSON object above. No preamble,
     # For YouTube, enforce the verified channel name as source — never trust Claude's inference
     if yt_channel:
         data["source"] = yt_channel
+
+    # ── Cronkite Truth Formula scoring ──────────────────────────────────
+    source_domain = urlparse(url).netloc.replace('www.', '')
+
+    credibility_result = calculate_credibility_score(
+        source_domain=source_domain,
+        author_name=data.get('author'),
+        claude_assessment={
+            'claim_verifiability': data.get('claim_verifiability_score', 50),
+            'language_neutrality': data.get('language_neutrality_score', 50),
+            'authorship_transparency': data.get('authorship_transparency_score', 50),
+        }
+    )
+
+    bias_result = calculate_bias_score({
+        'lexical_bias': data.get('lexical_bias_score', 0),
+        'source_selection': data.get('source_selection_score', 0),
+        'narrative_framing': data.get('narrative_framing_score', 0),
+        'omission': data.get('omission_score', 0),
+    })
+
+    data['cronkite_credibility'] = credibility_result
+    data['cronkite_bias'] = bias_result
+
     return data
 
 
@@ -2184,6 +2226,110 @@ Never do homework for them — ask questions back to develop their thinking."""
     except Exception as e:
         logger.error(f"Chat error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Entity Trust System endpoints ─────────────────────────────────────────────
+
+class EntityEncounterRequest(BaseModel):
+    name: str
+    entity_type: str
+    article_url: str = ""
+
+
+@app.get("/api/entities/search")
+async def search_entities(q: str, authorization: str = Header(None)):
+    """Search entities by name — used when article author is identified."""
+    if not q or len(q) < 2:
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
+    try:
+        supa = get_supabase()
+        result = supa.table("entities").select(
+            "name, slug, entity_type, base_trust_score, political_leaning, current_role, current_organisation, verified"
+        ).ilike("name", f"%{q}%").limit(20).execute()
+        return {"results": result.data or []}
+    except Exception as e:
+        logger.error(f"Entity search error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/entities/{slug}")
+async def get_entity(slug: str, authorization: str = Header(None), user: dict = Depends(get_current_user)):
+    """Get entity profile — full version for teachers, student summary only for students."""
+    try:
+        supa = get_supabase()
+
+        # Determine user role
+        role_result = supa.table("users").select("role").eq("id", user["sub"]).single().execute()
+        user_role = role_result.data.get("role", "student") if role_result.data else "student"
+
+        # Fetch entity
+        entity_result = supa.table("entities").select("*").eq("slug", slug).single().execute()
+        if not entity_result.data:
+            raise HTTPException(status_code=404, detail="Entity not found")
+
+        entity = entity_result.data
+
+        # Students get a limited view
+        if user_role == "student":
+            return {
+                "name": entity["name"],
+                "slug": entity["slug"],
+                "entity_type": entity["entity_type"],
+                "current_role": entity.get("current_role"),
+                "current_organisation": entity.get("current_organisation"),
+                "political_leaning": entity.get("political_leaning"),
+                "base_trust_score": entity.get("base_trust_score"),
+                "student_summary": entity.get("student_summary"),
+                "conflict_of_interest_flags": entity.get("conflict_of_interest_flags", []),
+                "verified": entity.get("verified", False),
+            }
+
+        # Teachers get full profile
+        return entity
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Entity get error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/entities/encounter")
+async def entity_encountered(req: EntityEncounterRequest, authorization: str = Header(None), user: dict = Depends(get_current_user)):
+    """Called when Cronkite encounters a new entity not in the database.
+    Auto-populates via Tavily and flags for review."""
+    try:
+        supa = get_supabase()
+
+        # Check if entity already exists
+        existing = supa.table("entities").select("slug, name").ilike("name", f"%{req.name}%").limit(1).execute()
+        if existing.data:
+            return {"status": "exists", "entity": existing.data[0]}
+
+        # Auto-populate via Tavily
+        populated = auto_populate_entity(req.name, req.entity_type)
+
+        # Generate slug
+        slug = req.name.lower().replace("'", "").replace(" ", "-")
+        slug = re.sub(r"[^a-z0-9-]", "", slug)
+
+        # Insert as unverified
+        row = {
+            "name": req.name,
+            "slug": slug,
+            "entity_type": req.entity_type,
+            "auto_populated": True,
+            "verified": False,
+            "flagged_for_review": True,
+            "data_sources": json.dumps(populated.get("raw_data", [])[:3]) if populated else "[]",
+        }
+
+        result = supa.table("entities").upsert(row, on_conflict="slug").execute()
+        return {"status": "created", "entity": result.data[0] if result.data else row}
+
+    except Exception as e:
+        logger.error(f"Entity encounter error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── SPA catch-all — must be the very last route ───────────────────────────────
