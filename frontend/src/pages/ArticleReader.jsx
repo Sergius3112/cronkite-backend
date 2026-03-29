@@ -37,6 +37,15 @@ const WELCOME_MESSAGES = [
   "All read. What's on your mind — the claims, the framing, or who's behind this story?",
 ]
 
+const BLOCKED_MESSAGES = [
+  "Ink shortage — couldn't get this one. Try opening it directly.",
+  "The presses have jammed on this article. Open it directly and ask me questions.",
+  "Our correspondent couldn't get access. Try the original link.",
+  "This one's behind closed doors. Open it directly and I'll still help.",
+  "Press pass denied. Try opening the article directly.",
+  "Couldn't get the story — our sources are limited here.",
+]
+
 function getRandomError() {
   return CRONKITE_ERRORS[Math.floor(Math.random() * CRONKITE_ERRORS.length)]
 }
@@ -53,6 +62,9 @@ export default function ArticleReader() {
 
   const [welcomeMessage] = useState(
     WELCOME_MESSAGES[Math.floor(Math.random() * WELCOME_MESSAGES.length)]
+  )
+  const [blockedMessage] = useState(
+    BLOCKED_MESSAGES[Math.floor(Math.random() * BLOCKED_MESSAGES.length)]
   )
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -74,7 +86,7 @@ export default function ArticleReader() {
         setLoading(false)
         setChatReady(true)
       })
-      .catch(() => { setError('Failed to load article'); setLoading(false) })
+      .catch(() => { setError('Failed to load article'); setLoading(false); setChatReady(true) })
   }, [url])
 
   useEffect(() => {
@@ -233,7 +245,7 @@ export default function ArticleReader() {
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {chatReady && (
+            {chatReady && !article?.blocked && (
               <div style={{
                 alignSelf: 'flex-start',
                 maxWidth: '85%',
@@ -246,6 +258,24 @@ export default function ArticleReader() {
                 whiteSpace: 'pre-wrap',
               }}>
                 {welcomeMessage}
+              </div>
+            )}
+            {chatReady && (article?.blocked || (error && !article)) && (
+              <div style={{
+                alignSelf: 'flex-start',
+                maxWidth: '85%',
+                background: 'rgba(247,243,236,0.08)',
+                color: '#F7F3EC',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                fontSize: '13px',
+                lineHeight: 1.5,
+                whiteSpace: 'pre-wrap',
+              }}>
+                {blockedMessage}
+                <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: '8px', fontSize: '11px', color: '#9E9488', textDecoration: 'none' }}>
+                  Open original →
+                </a>
               </div>
             )}
             {messages.map((msg, i) => (
