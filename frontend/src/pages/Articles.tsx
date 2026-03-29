@@ -68,7 +68,7 @@ const Articles = () => {
   };
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main className="max-w-7xl mx-auto px-8 py-8">
       {/* Section 1 — Analyse Content */}
       <h2 className="font-serif" style={{ fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', marginBottom: '4px', color: '#1A1714' }}>
         Analyse Content

@@ -134,7 +134,7 @@ export default function StudentDashboard() {
   const uniqueModules = new Set([...pending, ...completed].map(a => a.module_id)).size
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '28px 40px' }}>
         {/* Welcome */}
         <div className="mb-6">
           <h2 className="font-serif text-ink" style={{ fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', marginBottom: '4px' }}>
@@ -177,7 +177,7 @@ export default function StudentDashboard() {
         {!loading && tab === 'pending' && (
           pending.length === 0
             ? <EmptyState title="All caught up!" text="No pending assignments. Check back when your teacher adds more." />
-            : <div className="flex flex-col gap-3">
+            : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(500px, 1fr))', gap: '10px' }}>
                 {pending.map(a => (
                   <AssignmentCard
                     key={a.id} assignment={a}
@@ -193,7 +193,7 @@ export default function StudentDashboard() {
         {!loading && tab === 'completed' && (
           completed.length === 0
             ? <EmptyState title="Nothing completed yet" text="Mark assignments as complete after analysing them." />
-            : <div className="flex flex-col gap-3">
+            : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(500px, 1fr))', gap: '10px' }}>
                 {completed.map(a => (
                   <AssignmentCard
                     key={a.id} assignment={a}

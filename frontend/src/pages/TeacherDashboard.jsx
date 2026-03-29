@@ -180,7 +180,7 @@ export default function TeacherDashboard() {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-8 py-8">
         {/* Welcome */}
         <div className="mb-6">
           <h2 className="font-serif text-ink" style={{ fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', marginBottom: '4px' }}>

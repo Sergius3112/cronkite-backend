@@ -56,7 +56,7 @@ export default function StudentModules() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-8 py-8">
       <div className="mb-6">
         <h2 className="font-serif" style={{ fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', marginBottom: '4px', color: '#1A1714' }}>My Modules</h2>
         <p style={{ fontSize: '13px', color: '#7A746E', marginBottom: '22px' }}>Modules your teacher has assigned articles from</p>

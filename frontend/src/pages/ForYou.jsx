@@ -50,7 +50,7 @@ export default function ForYou() {
   )
 
   return (
-    <main style={{ maxWidth: '720px', margin: '0 auto', padding: '28px 32px' }}>
+    <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '28px 32px' }}>
       <h2 className="font-serif" style={{ fontSize: '32px', fontWeight: 700, letterSpacing: '-0.5px', marginBottom: '4px', color: '#1A1714' }}>For You</h2>
       <p style={{ fontSize: '13px', color: '#7A746E', marginBottom: '22px' }}>Articles matched to your modules — updated daily</p>
 

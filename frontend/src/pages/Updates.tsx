@@ -24,7 +24,7 @@ export default function Updates() {
   }, []);
 
   return (
-    <main style={{ maxWidth: '720px', margin: '0 auto', padding: '28px 32px' }}>
+    <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '28px 32px' }}>
       <div style={{ marginBottom: '22px' }}>
         <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '24px', fontWeight: 700, letterSpacing: '-0.3px', marginBottom: '4px', color: '#1A1714' }}>
           Daily Briefing
