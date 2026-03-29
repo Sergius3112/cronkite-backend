@@ -17,6 +17,8 @@ RUN playwright install chromium
 RUN playwright install-deps chromium
 
 COPY main.py .
+COPY scoring.py .
+COPY seed_entities.py .
 COPY cronkite-edu.html .
 COPY teacher.html .
 COPY student.html .
