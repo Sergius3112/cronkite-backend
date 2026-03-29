@@ -1823,6 +1823,11 @@ async def scrape_with_playwright(url: str) -> dict:
         return {'content': '', 'title': ''}
 
 
+def is_js_wall(text: str) -> bool:
+    signals = ['javascript is disabled', 'enable javascript', 'please enable javascript']
+    return any(s in text.lower() for s in signals)
+
+
 async def fetch_article_with_claude(url: str) -> dict:
     """Last-resort fallback: use Claude web search to fetch article content."""
     try:
@@ -1922,14 +1927,20 @@ async def read_article(url: str = ""):
         except Exception as e:
             logger.info(f"httpx failed for {url}: {e}")
 
+        if is_js_wall(content):
+            content = ''
+
         # Step 2: Playwright (JS-rendered sites)
-        if not content or len(content) < 200 or 'javascript is disabled' in content.lower():
+        if not content or len(content) < 200:
             logger.info(f"Trying Playwright for {url}")
             playwright_result = await scrape_with_playwright(url)
             if playwright_result.get('content') and len(playwright_result['content']) > 200:
                 content = playwright_result['content']
                 if not title:
                     title = playwright_result.get('title', '')
+
+        if is_js_wall(content):
+            content = ''
 
         # Step 3: Claude web search (paywalled/blocked — used sparingly)
         if not content or len(content) < 200:
