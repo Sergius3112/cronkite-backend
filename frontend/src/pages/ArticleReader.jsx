@@ -209,24 +209,41 @@ export default function ArticleReader() {
             </div>
           )}
 
-          {article && !article.blocked && (
-            <div style={{ maxWidth: '640px', margin: '0 auto' }}>
-              <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'rgb(196,30,58)', marginBottom: '10px' }}>
-                {article.source}
+          {article && !article.blocked && (() => {
+            const articleParts = article.content?.split('--- READER COMMENTS ---') || []
+            const mainContent = articleParts[0]
+            const commentsContent = articleParts[1]
+            return (
+              <div style={{ maxWidth: '640px', margin: '0 auto' }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'rgb(196,30,58)', marginBottom: '10px' }}>
+                  {article.source}
+                </div>
+                <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '26px', fontWeight: 700, color: '#1A1714', lineHeight: 1.3, marginBottom: '12px', letterSpacing: '-0.3px' }}>
+                  {article.title}
+                </h1>
+                <div style={{ fontSize: '12px', color: '#B0A89E', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid rgba(26,23,20,0.06)' }}>
+                  Assigned by teacher
+                </div>
+                <div style={{ fontSize: '15px', lineHeight: 1.8, color: '#1A1714' }}>
+                  {mainContent.split('\n').map((para, i) => (
+                    para.trim() ? <p key={i} style={{ marginBottom: '16px' }}>{para}</p> : null
+                  ))}
+                </div>
+                {commentsContent && (
+                  <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '2px solid rgba(26,23,20,0.08)' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.7px', color: '#B0A89E', marginBottom: '14px' }}>
+                      Reader Comments
+                    </div>
+                    <div style={{ fontSize: '14px', lineHeight: 1.7, color: '#7A746E' }}>
+                      {commentsContent.split('\n').map((para, i) => (
+                        para.trim() ? <p key={i} style={{ marginBottom: '12px' }}>{para}</p> : null
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: '26px', fontWeight: 700, color: '#1A1714', lineHeight: 1.3, marginBottom: '12px', letterSpacing: '-0.3px' }}>
-                {article.title}
-              </h1>
-              <div style={{ fontSize: '12px', color: '#B0A89E', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid rgba(26,23,20,0.06)' }}>
-                Assigned by teacher
-              </div>
-              <div style={{ fontSize: '15px', lineHeight: 1.8, color: '#1A1714' }}>
-                {article.content.split('\n').map((para, i) => (
-                  para.trim() ? <p key={i} style={{ marginBottom: '16px' }}>{para}</p> : null
-                ))}
-              </div>
-            </div>
-          )}
+            )
+          })()}
         </div>
 
         {/* Chat sidebar */}

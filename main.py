@@ -1823,6 +1823,42 @@ async def scrape_with_playwright(url: str) -> dict:
         return {'content': '', 'title': ''}
 
 
+def clean_article_with_claude(raw_text: str, url: str) -> str:
+    """Use Claude Haiku to clean scraped article text."""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+
+        response = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=4000,
+            messages=[{
+                "role": "user",
+                "content": f"""You are given raw scraped text from a news article at {url}.
+
+Clean and structure the text as follows:
+
+1. Extract the main article body — remove navigation menus, headers, footers, advertisement text, cookie notices, subscription prompts, social media sharing prompts, and unrelated link lists.
+
+2. Keep the comments section if present, but clearly separate it from the article with this exact marker on its own line:
+--- READER COMMENTS ---
+
+3. Keep the author name and publication date.
+
+4. Return the cleaned article first, then the comments section (if any) after the marker. No explanation, no preamble, no markdown formatting — just the cleaned text.
+
+Raw text:
+{raw_text[:8000]}"""
+            }]
+        )
+
+        cleaned = response.content[0].text.strip()
+        return cleaned if len(cleaned) > 100 else raw_text
+    except Exception as e:
+        logger.error(f"Claude clean error: {e}")
+        return raw_text
+
+
 def is_js_wall(text: str) -> bool:
     signals = ['javascript is disabled', 'enable javascript', 'please enable javascript']
     return any(s in text.lower() for s in signals)
@@ -1963,6 +1999,10 @@ async def read_article(url: str = ""):
                 "blocked": True,
                 "error": "Could not extract content from this URL."
             })
+
+        # Clean extracted content with Claude Haiku
+        if content and len(content) > 200:
+            content = clean_article_with_claude(content, url)
 
         return JSONResponse({
             "title": title,
