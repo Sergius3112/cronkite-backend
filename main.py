@@ -1829,10 +1829,23 @@ async def read_article(url: str = ""):
     if not url:
         return JSONResponse({"error": "Missing url parameter"}, status_code=400)
 
+    # Block domains that will never work (native app only)
+    BLOCKED_DOMAINS = ['x.com', 'twitter.com', 'instagram.com', 'tiktok.com', 'facebook.com', 'linkedin.com']
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    hostname = (parsed.netloc or '').replace('www.', '')
+    if any(d in hostname for d in BLOCKED_DOMAINS):
+        return JSONResponse({
+            "title": url,
+            "content": None,
+            "source": hostname,
+            "url": url,
+            "blocked": True,
+            "error": "This platform requires a native app to access. Use the Cronkite app when available."
+        })
+
     # Extract source from hostname
     try:
-        from urllib.parse import urlparse
-        parsed = urlparse(url)
         source = parsed.hostname.replace('www.', '') if parsed.hostname else url
     except Exception:
         source = url

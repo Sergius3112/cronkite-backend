@@ -5,10 +5,20 @@ import { CheckCircle, AlertCircle, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { ArticleAnalysisCard } from '../components/articles/ArticleAnalysisCard'
 
-function isArticleUrl(url) {
+const BLOCKED_DOMAINS = [
+  'x.com', 'twitter.com',
+  'instagram.com',
+  'tiktok.com',
+  'facebook.com',
+  'linkedin.com',
+]
+
+function isReadableUrl(url) {
   try {
-    const path = new URL(url).pathname
-    return path.length > 1 // has a path beyond just "/"
+    const hostname = new URL(url).hostname.replace('www.', '')
+    const isBlocked = BLOCKED_DOMAINS.some(d => hostname.includes(d))
+    const hasPath = new URL(url).pathname.length > 1
+    return !isBlocked && hasPath
   } catch {
     return false
   }
@@ -269,7 +279,7 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
               View Analysis
             </button>
           )}
-          {!done && articleUrl && isArticleUrl(articleUrl) && (
+          {!done && articleUrl && isReadableUrl(articleUrl) && (
             <button
               onClick={() => cardNavigate(`/read?url=${encodeURIComponent(articleUrl)}`)}
               style={{ background: 'rgb(196,30,58)', color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
@@ -277,7 +287,7 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
               Read with Cronkite
             </button>
           )}
-          {!done && articleUrl && !isArticleUrl(articleUrl) && (
+          {!done && articleUrl && !isReadableUrl(articleUrl) && (
             <a
               href={articleUrl} target="_blank" rel="noopener noreferrer"
               style={{ display: 'inline-block', background: '#1A1714', color: '#F7F3EC', border: 'none', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", textDecoration: 'none' }}

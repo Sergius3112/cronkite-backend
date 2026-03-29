@@ -1,10 +1,20 @@
 import { useEffect, useState } from 'react'
 import { sb } from '../lib/supabase'
 
-function isArticleUrl(url) {
+const BLOCKED_DOMAINS = [
+  'x.com', 'twitter.com',
+  'instagram.com',
+  'tiktok.com',
+  'facebook.com',
+  'linkedin.com',
+]
+
+function isReadableUrl(url) {
   try {
-    const path = new URL(url).pathname
-    return path.length > 1 // has a path beyond just "/"
+    const hostname = new URL(url).hostname.replace('www.', '')
+    const isBlocked = BLOCKED_DOMAINS.some(d => hostname.includes(d))
+    const hasPath = new URL(url).pathname.length > 1
+    return !isBlocked && hasPath
   } catch {
     return false
   }
@@ -67,7 +77,7 @@ export default function ForYou() {
               <div style={{ fontSize: '12px', color: '#7A746E', marginBottom: '4px' }}>{s.source}</div>
               <div style={{ fontSize: '12px', color: '#7A746E', marginBottom: '6px', lineHeight: 1.5 }}>{s.reason}</div>
               {s.module_title && <div style={{ fontSize: '10px', color: '#B0A89E', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>{s.module_title}</div>}
-              {isArticleUrl(s.url) ? (
+              {isReadableUrl(s.url) ? (
                 <a href={`/read?url=${encodeURIComponent(s.url)}`}
                   style={{ display: 'inline-block', background: 'rgb(196,30,58)', color: '#fff', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', fontWeight: 600, textDecoration: 'none', fontFamily: "'DM Sans', sans-serif" }}>
                   Read with Cronkite →
