@@ -12,6 +12,7 @@ import Reports from './pages/Reports'
 import Updates from './pages/Updates'
 import StudentModules from './pages/StudentModules'
 import ForYou from './pages/ForYou'
+import SituationRoom from './pages/SituationRoom'
 import ArticleReader from './pages/ArticleReader'
 
 function Shell({ children }) {
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="/auth/callback" element={<Login />} />
         <Route path="/read"          element={<ArticleReader />} />
         <Route path="/teacher" element={<Shell><TeacherDashboard /></Shell>} />
+        <Route path="/situation-room" element={<Shell><SituationRoom /></Shell>} />
         <Route path="/student" element={<Shell><StudentDashboard /></Shell>} />
         <Route path="/modules"  element={<Shell><Modules /></Shell>} />
         <Route path="/articles" element={<Shell><Articles /></Shell>} />

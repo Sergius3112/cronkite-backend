@@ -5,14 +5,15 @@ import { sb } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, BookOpen, Newspaper,
-  BarChart3, Sparkles, Inbox, LogOut, Menu, Users, FileText,
+  BarChart3, Sparkles, Inbox, LogOut, Menu, Users, FileText, Radio,
 } from 'lucide-react'
 
 const TEACHER_NAV_WORKSPACE = [
-  { label: 'Overview',        href: '/teacher',   icon: LayoutDashboard },
-  { label: 'Analyse Content', href: '/articles',  icon: Newspaper },
-  { label: 'Modules',         href: '/modules',   icon: BookOpen },
-  { label: 'Students',        href: '/reports',   icon: Users },
+  { label: 'Overview',        href: '/teacher',         icon: LayoutDashboard },
+  { label: 'Situation Room',  href: '/situation-room',  icon: Radio },
+  { label: 'Analyse Content', href: '/articles',        icon: Newspaper },
+  { label: 'Modules',         href: '/modules',         icon: BookOpen },
+  { label: 'Students',        href: '/reports',         icon: Users },
 ]
 
 const TEACHER_NAV_CONTENT = [

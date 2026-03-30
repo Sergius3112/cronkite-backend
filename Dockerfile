@@ -19,6 +19,8 @@ RUN playwright install-deps chromium
 COPY main.py .
 COPY scoring.py .
 COPY seed_entities.py .
+COPY monitoring_agent.py .
+COPY seed_sources.py .
 COPY cronkite-edu.html .
 COPY teacher.html .
 COPY student.html .

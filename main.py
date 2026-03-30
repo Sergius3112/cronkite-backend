@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 from typing import Optional
 from urllib.parse import urlparse
 from scoring import calculate_credibility_score, calculate_bias_score, get_entity_trust, auto_populate_entity
+from monitoring_agent import run_monitoring_cycle
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -36,14 +37,23 @@ async def startup_check():
         logger.warning("  [MISSING] OPENAI_API_KEY — YouTube Whisper transcription will fail")
     logger.info("===========================================")
 
-    # Start the daily briefing scheduler
+    # Start schedulers
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from datetime import datetime as _dt
         _scheduler = AsyncIOScheduler(timezone="Europe/London")
         # PAUSED — re-enable when pilot schools are onboarded
         # _scheduler.add_job(run_daily_briefing, 'cron', hour=8, minute=30)
+        _scheduler.add_job(
+            run_monitoring_cycle,
+            'interval',
+            hours=1,
+            id='monitoring_agent',
+            replace_existing=True,
+            next_run_time=_dt.now(),
+        )
         _scheduler.start()
-        logger.info("Scheduler started — Daily Briefing PAUSED (manual trigger only)")
+        logger.info("Scheduler started — Monitoring Agent: hourly, Daily Briefing: PAUSED")
     except Exception as _sched_err:
         logger.warning(f"Scheduler failed to start: {_sched_err}")
 
@@ -2228,6 +2238,65 @@ Never do homework for them — ask questions back to develop their thinking."""
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# ── Monitoring Agent & Situation Room endpoints ───────────────────────────────
+
+@app.post("/api/monitoring/run")
+async def trigger_monitoring(secret: str = ""):
+    """Manual trigger for testing."""
+    if secret != "cronkite2026":
+        return JSONResponse({"error": "Unauthorised"}, status_code=401)
+    import asyncio as _asyncio
+    _asyncio.create_task(run_monitoring_cycle())
+    return JSONResponse({"status": "Monitoring cycle triggered"})
+
+
+@app.get("/api/stories")
+async def get_stories(
+    limit: int = 20,
+    trending_only: bool = False,
+    authorization: str = Header(None),
+):
+    """Returns active stories ordered by last_updated desc."""
+    svc = get_supabase()
+    query = svc.table('stories').select('*').eq('active', True).order('last_updated', desc=True).limit(limit)
+    if trending_only:
+        query = query.eq('trending', True)
+    result = query.execute()
+    return JSONResponse({"stories": result.data or []})
+
+
+@app.get("/api/stories/{story_id}")
+async def get_story(story_id: str, authorization: str = Header(None)):
+    """Returns full story with linked articles and narrative alerts."""
+    svc = get_supabase()
+    story = svc.table('stories').select('*').eq('id', story_id).single().execute()
+    articles = svc.table('story_articles').select('*, articles(*)').eq('story_id', story_id).order('published_at', desc=True).execute()
+    alerts = svc.table('narrative_alerts').select('*').eq('story_id', story_id).eq('dismissed', False).execute()
+    return JSONResponse({
+        "story": story.data,
+        "articles": articles.data or [],
+        "alerts": alerts.data or [],
+    })
+
+
+@app.get("/api/narrative-alerts")
+async def get_narrative_alerts(
+    dismissed: bool = False,
+    authorization: str = Header(None),
+):
+    """Returns narrative alerts for teacher dashboard."""
+    svc = get_supabase()
+    result = svc.table('narrative_alerts').select('*, stories(headline)').eq('dismissed', dismissed).order('detected_at', desc=True).limit(20).execute()
+    return JSONResponse({"alerts": result.data or []})
+
+
+@app.post("/api/narrative-alerts/{alert_id}/dismiss")
+async def dismiss_alert(alert_id: str, authorization: str = Header(None)):
+    svc = get_supabase()
+    svc.table('narrative_alerts').update({'dismissed': True}).eq('id', alert_id).execute()
+    return JSONResponse({"status": "dismissed"})
+
+
 # ── Entity Trust System endpoints ─────────────────────────────────────────────
 
 class EntityEncounterRequest(BaseModel):
@@ -2244,7 +2313,7 @@ async def search_entities(q: str, authorization: str = Header(None)):
     try:
         supa = get_supabase()
         result = supa.table("entities").select(
-            "name, slug, entity_type, base_trust_score, political_leaning, current_role, current_organisation, verified"
+            "name, slug, entity_type, base_trust_score, political_leaning, entity_role, current_organisation, verified"
         ).ilike("name", f"%{q}%").limit(20).execute()
         return {"results": result.data or []}
     except Exception as e:
@@ -2275,7 +2344,7 @@ async def get_entity(slug: str, authorization: str = Header(None), user: dict = 
                 "name": entity["name"],
                 "slug": entity["slug"],
                 "entity_type": entity["entity_type"],
-                "current_role": entity.get("current_role"),
+                "entity_role": entity.get("entity_role"),
                 "current_organisation": entity.get("current_organisation"),
                 "political_leaning": entity.get("political_leaning"),
                 "base_trust_score": entity.get("base_trust_score"),
