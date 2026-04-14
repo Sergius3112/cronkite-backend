@@ -2070,58 +2070,104 @@ async def read_article(url: str = ""):
 
 # ── For You — AI-suggested articles matched to student modules ────────────────
 
-FOCUS_KEYWORDS = {
-    'evaluating_content': 'media credibility journalism',
-    'persuasion_techniques': 'political rhetoric persuasion',
-    'online_behaviour': 'social media online misinformation',
-    'identifying_risks': 'misinformation fake news',
-    'managing_information': 'news literacy information',
+FOCUS_QUERIES = {
+    'evaluating_content': 'UK news media credibility fact checking journalism standards',
+    'persuasion_techniques': 'UK political rhetoric persuasion propaganda analysis',
+    'online_behaviour': 'UK social media misinformation online harm digital literacy',
+    'identifying_risks': 'UK misinformation fake news disinformation media',
+    'managing_information': 'UK news bias media ownership press freedom',
 }
 
+BIAS_DOMAIN_MAP = {
+    'theguardian.com': 'left', 'mirror.co.uk': 'left', 'independent.co.uk': 'left',
+    'novaramedia.com': 'left', 'newstatesman.com': 'left',
+    'dailymail.co.uk': 'right', 'thetimes.co.uk': 'right', 'telegraph.co.uk': 'right',
+    'thesun.co.uk': 'right', 'spectator.co.uk': 'right', 'gbnews.com': 'right',
+    'express.co.uk': 'right',
+}
 
-def generate_for_you_suggestions(user_id: str, modules: list) -> list:
-    """For each module (max 3), use Tavily to find recent UK news articles from supported domains."""
+FILTER_TITLE_WORDS = ['retracted', 'correction', 'update:', "editor's note"]
+
+
+async def _url_accessible(url: str) -> bool:
+    """HEAD request to verify URL is accessible."""
+    try:
+        async with httpx.AsyncClient(timeout=5, follow_redirects=True) as client:
+            r = await client.head(url, headers={"User-Agent": "Mozilla/5.0"})
+            return r.status_code < 400
+    except Exception:
+        return False
+
+
+async def generate_for_you_suggestions(modules: list) -> list:
+    """For each module (max 5), use Tavily to find recent verified UK news articles."""
+    from datetime import date as _date, timedelta as _td
     tavily = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
-    suggestions = []
+    cutoff = _date.today() - _td(days=30)
+    results_out = []
 
-    for mod in modules[:3]:
+    for mod in modules[:5]:
         focus = mod.get('focus_point') or mod.get('focus_area') or ''
-        keywords = FOCUS_KEYWORDS.get(focus, 'UK news media literacy')
+        query = FOCUS_QUERIES.get(focus, 'UK news media literacy education')
+        mod_id = mod.get('id') or mod.get('module_id')
         mod_title = mod.get('title') or mod.get('name') or 'Untitled'
 
         try:
-            results = tavily.search(
-                query=f"UK news {keywords} {mod_title}",
-                max_results=5,
-                days=7,
-            )
-            for item in results.get('results', []):
-                # Infer bias from domain
-                url = item.get('url', '')
-                source = item.get('source', '')
-                bias = 'centre'
-                if 'theguardian.com' in url:
-                    bias = 'left'
-                elif 'dailymail.co.uk' in url or 'thetimes.co.uk' in url:
-                    bias = 'right'
-
-                suggestions.append({
-                    'title': item.get('title', ''),
-                    'url': url,
-                    'source': source or url.split('/')[2] if '/' in url else '',
-                    'reason': f"Relevant to your module on {mod_title} — covers {keywords.split()[0]}.",
-                    'bias': bias,
-                    'module_title': mod_title,
-                })
+            results = tavily.search(query=query, max_results=8, days=30)
         except Exception as e:
-            logger.warning(f"For You Tavily search failed for module {mod_title}: {e}")
+            logger.warning(f"For You Tavily failed for {mod_title}: {e}")
+            continue
 
-    return suggestions
+        for item in results.get('results', []):
+            url = item.get('url', '')
+            title = item.get('title', '')
+            if not url or not title:
+                continue
+
+            # Filter out corrections/retractions
+            if any(w in title.lower() for w in FILTER_TITLE_WORDS):
+                continue
+
+            # Filter by published date if present
+            pub_str = item.get('published_date') or ''
+            pub_date = None
+            if pub_str:
+                try:
+                    pub_date = _date.fromisoformat(pub_str[:10])
+                    if pub_date < cutoff:
+                        continue
+                except Exception:
+                    pass
+
+            # Validate URL is accessible
+            if not await _url_accessible(url):
+                continue
+
+            # Infer bias from domain
+            domain = url.split('/')[2].replace('www.', '') if url.startswith('http') else ''
+            bias = BIAS_DOMAIN_MAP.get(domain, 'centre')
+
+            source = item.get('source') or domain
+            results_out.append({
+                'module_id': mod_id,
+                'module_title': mod_title,
+                'title': title,
+                'url': url,
+                'source': source,
+                'reason': item.get('content', '')[:180] or f"Relevant to your {mod_title} module.",
+                'bias': bias,
+                'published_date': str(pub_date) if pub_date else None,
+            })
+
+    return results_out
 
 
 @app.get("/api/for-you")
 async def get_for_you(authorization: str = Header(None)):
-    """Return AI-suggested articles matched to the user's modules. Cached daily."""
+    """
+    Returns all stored For You articles for this user, grouped by module.
+    If today has no new articles for a module, generates new ones and banks them.
+    """
     if not authorization or not authorization.startswith("Bearer "):
         return JSONResponse({"error": "Unauthorised"}, status_code=401)
     token = authorization.split(" ", 1)[1].strip()
@@ -2136,54 +2182,159 @@ async def get_for_you(authorization: str = Header(None)):
     except Exception:
         return JSONResponse({"error": "Unauthorised"}, status_code=401)
 
-    from datetime import date as date_type
-    today = str(date_type.today())
+    from datetime import date as _date
+    today = str(_date.today())
+    svc = get_supabase()
 
-    # Check cache in for_you_suggestions table
+    # Get user's modules via assignments
     try:
-        supa_service = get_supabase()
-        cached = supa_service.table("for_you_suggestions").select("suggestions").eq("user_id", user_id).eq("date", today).execute()
-        if cached.data and len(cached.data) > 0:
-            return {"suggestions": cached.data[0]["suggestions"], "generated_at": today}
-    except Exception as e:
-        logger.warning(f"For You cache check failed: {e}")
-
-    # Get user's modules via their assignments
-    try:
-        assignments = supa_service.table("assignments").select("module_id, modules(id, title, focus_point, key_stage)").eq("student_email", user_email).execute()
-        seen_ids = set()
+        assignment_res = svc.table("assignments").select(
+            "module_id, modules(id, title, focus_point, key_stage)"
+        ).eq("student_email", user_email).execute()
+        seen_ids: set = set()
         modules = []
-        for row in (assignments.data or []):
+        for row in (assignment_res.data or []):
             mod = row.get("modules")
             mid = row.get("module_id")
             if mod and mid and mid not in seen_ids:
                 seen_ids.add(mid)
-                modules.append(mod)
+                modules.append({**mod, 'module_id': mid})
     except Exception as e:
         logger.warning(f"For You module lookup failed: {e}")
         modules = []
 
     if not modules:
-        return {"suggestions": [], "generated_at": today}
+        return JSONResponse({"modules": []})
 
-    # Generate new suggestions
-    suggestions = generate_for_you_suggestions(user_id, modules)
+    # For each module check if we have articles added today; generate if not
+    modules_needing_refresh = []
+    for mod in modules:
+        mid = mod.get('id') or mod.get('module_id')
+        try:
+            check = svc.table("for_you_articles").select("id").eq("user_id", user_id).eq("module_id", mid).eq("date_added", today).limit(1).execute()
+            if not check.data:
+                modules_needing_refresh.append(mod)
+        except Exception as e:
+            logger.warning(f"For You date check failed: {e}")
+            modules_needing_refresh.append(mod)
 
-    # Store in cache
+    if modules_needing_refresh:
+        new_articles = await generate_for_you_suggestions(modules_needing_refresh)
+        for art in new_articles:
+            try:
+                svc.table("for_you_articles").insert({
+                    "user_id": user_id,
+                    "module_id": art['module_id'],
+                    "module_title": art['module_title'],
+                    "title": art['title'],
+                    "url": art['url'],
+                    "source": art.get('source'),
+                    "reason": art.get('reason'),
+                    "bias": art.get('bias'),
+                    "published_date": art.get('published_date'),
+                    "date_added": today,
+                }).execute()
+            except Exception:
+                pass  # on_conflict ignore — duplicate URL for this user
+
+    # Fetch all articles for this user
     try:
-        supa_service.table("for_you_suggestions").upsert({
-            "user_id": user_id,
-            "date": today,
-            "suggestions": suggestions,
-        }, on_conflict="user_id,date").execute()
+        all_res = svc.table("for_you_articles").select("*").eq("user_id", user_id).order("date_added", desc=True).execute()
+        all_articles = all_res.data or []
     except Exception as e:
-        logger.warning(f"For You cache store failed: {e}")
+        logger.warning(f"For You fetch failed: {e}")
+        all_articles = []
 
-    return {"suggestions": suggestions, "generated_at": today}
+    # Check which article URLs have conversations
+    try:
+        conv_res = svc.table("for_you_conversations").select("article_url").eq("user_id", user_id).execute()
+        conv_urls = {r['article_url'] for r in (conv_res.data or [])}
+    except Exception:
+        conv_urls = set()
 
-# TODO: Add generate_for_you_suggestions to daily scheduler for all active users
-# once we identify active users from the assignments table.
-# Example: _scheduler.add_job(run_daily_for_you, 'cron', hour=9, minute=0)
+    for art in all_articles:
+        art['has_conversation'] = art['url'] in conv_urls
+
+    # Group by module
+    module_map: dict = {}
+    for mod in modules:
+        mid = mod.get('id') or mod.get('module_id')
+        module_map[mid] = {
+            'module_id': mid,
+            'module_title': mod.get('title') or mod.get('name') or 'Untitled',
+            'articles': [],
+        }
+    # Catch any module_ids from the article bank not in the current set
+    for art in all_articles:
+        mid = art.get('module_id')
+        if mid and mid not in module_map:
+            module_map[mid] = {
+                'module_id': mid,
+                'module_title': art.get('module_title', 'Module'),
+                'articles': [],
+            }
+        if mid and mid in module_map:
+            module_map[mid]['articles'].append(art)
+
+    return JSONResponse({"modules": list(module_map.values())})
+
+
+@app.get("/api/for-you/conversation")
+async def get_conversation(article_url: str, authorization: str = Header(None)):
+    """Get saved conversation for an article."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return JSONResponse({"error": "Unauthorised"}, status_code=401)
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        supa = get_supabase()
+        user_res = supa.auth.get_user(token)
+        if not user_res or not user_res.user:
+            return JSONResponse({"error": "Unauthorised"}, status_code=401)
+        user_id = str(user_res.user.id)
+    except Exception:
+        return JSONResponse({"error": "Unauthorised"}, status_code=401)
+
+    try:
+        result = supa.table("for_you_conversations").select("*").eq("user_id", user_id).eq("article_url", article_url).single().execute()
+        return JSONResponse({"conversation": result.data})
+    except Exception:
+        return JSONResponse({"conversation": None})
+
+
+class ConversationSaveRequest(BaseModel):
+    article_url: str
+    article_title: str = ""
+    messages: list = []
+
+
+@app.post("/api/for-you/conversation")
+async def save_conversation(req: ConversationSaveRequest, authorization: str = Header(None)):
+    """Save/update conversation for an article. Upserts on user_id + article_url."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return JSONResponse({"error": "Unauthorised"}, status_code=401)
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        supa = get_supabase()
+        user_res = supa.auth.get_user(token)
+        if not user_res or not user_res.user:
+            return JSONResponse({"error": "Unauthorised"}, status_code=401)
+        user_id = str(user_res.user.id)
+    except Exception:
+        return JSONResponse({"error": "Unauthorised"}, status_code=401)
+
+    from datetime import datetime as _dt
+    try:
+        supa.table("for_you_conversations").upsert({
+            "user_id": user_id,
+            "article_url": req.article_url,
+            "article_title": req.article_title,
+            "messages": req.messages,
+            "updated_at": _dt.utcnow().isoformat(),
+        }, on_conflict="user_id,article_url").execute()
+        return JSONResponse({"status": "saved"})
+    except Exception as e:
+        logger.error(f"Save conversation error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # ── Chat with article — powers Cronkite Chrome extension chat sidebar ─────────
@@ -2210,14 +2361,11 @@ URL: {req.url}
 Article content:
 {req.article_content[:3000]}
 
-Help the student understand:
-- Bias and political leaning
-- Persuasion techniques being used
-- Credibility of claims
-- How to think critically about this content
-
-Keep responses concise, educational, and appropriate for secondary school students (ages 11-18).
-Never do homework for them — ask questions back to develop their thinking."""
+Help the student understand bias, persuasion techniques, and credibility.
+Keep responses concise, conversational and educational.
+Write in plain English — no bullet points, no hashtags, no em dashes, no markdown formatting of any kind.
+Ask questions back to develop critical thinking rather than just giving answers.
+Sound like a knowledgeable friend, not a report."""
 
         messages = []
         for h in req.history[-6:]:  # Keep last 6 exchanges
