@@ -2238,6 +2238,19 @@ Never do homework for them — ask questions back to develop their thinking."""
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# ── Articles list endpoint ────────────────────────────────────────────────────
+
+@app.get("/api/articles")
+async def get_articles(auto_generated: bool = None, limit: int = 20, authorization: str = Header(None)):
+    """List articles, optionally filtered by auto_generated flag."""
+    svc = get_supabase()
+    query = svc.table('articles').select('*').order('created_at', desc=True).limit(limit)
+    if auto_generated is not None:
+        query = query.eq('auto_generated', auto_generated)
+    result = query.execute()
+    return JSONResponse({"articles": result.data or []})
+
+
 # ── Monitoring Agent & Situation Room endpoints ───────────────────────────────
 
 @app.post("/api/monitoring/run")

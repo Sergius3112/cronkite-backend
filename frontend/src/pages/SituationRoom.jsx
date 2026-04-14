@@ -12,12 +12,17 @@ export default function SituationRoom() {
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
-      if (!session) return
+      if (!session?.access_token) return
       const token = session.access_token
+      const headers = { Authorization: `Bearer ${token}` }
+      const safeFetch = (url) =>
+        fetch(url, { headers })
+          .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+
       Promise.all([
-        fetch('/api/stories?limit=20', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        fetch('/api/narrative-alerts', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        fetch('/api/articles?auto_generated=true&limit=12', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+        safeFetch('/api/stories?limit=20').catch(e => { console.error('Stories fetch error:', e); return { stories: [] } }),
+        safeFetch('/api/narrative-alerts').catch(e => { console.error('Alerts fetch error:', e); return { alerts: [] } }),
+        safeFetch('/api/articles?auto_generated=true&limit=12').catch(e => { console.error('Articles fetch error:', e); return { articles: [] } }),
       ]).then(([storiesData, alertsData, articlesData]) => {
         setStories(storiesData.stories || [])
         setAlerts(alertsData.alerts || [])
