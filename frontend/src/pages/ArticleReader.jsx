@@ -126,9 +126,17 @@ export default function ArticleReader() {
           article_content: article?.content?.substring(0, 3000) || '',
           message: text,
           history: chatHistory,
-          credibility_score: article?.analysis?.credibility_score,
-          bias_score: article?.analysis?.bias_direction,
-          bias_label: article?.analysis?.bias_label,
+          author_name: article?.analysis?.author || null,
+          cronkite_scores: article?.analysis?.cronkite_credibility ? {
+            credibility_score: article.analysis.cronkite_credibility.score,
+            components: article.analysis.cronkite_credibility.components,
+            source_trust: article.analysis.cronkite_credibility.source_trust,
+            author_trust: article.analysis.cronkite_credibility.author_trust,
+            conflict_of_interest_flags: article.analysis.cronkite_credibility.conflict_of_interest_flags,
+            bias_score: article.analysis.cronkite_bias?.score,
+            bias_label: article.analysis.cronkite_bias?.label,
+            bias_components: article.analysis.cronkite_bias?.components,
+          } : null,
         }),
       })
       if (!resp.ok) {
