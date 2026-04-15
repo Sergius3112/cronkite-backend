@@ -126,6 +126,9 @@ export default function ArticleReader() {
           article_content: article?.content?.substring(0, 3000) || '',
           message: text,
           history: chatHistory,
+          credibility_score: article?.analysis?.credibility_score,
+          bias_score: article?.analysis?.bias_direction,
+          bias_label: article?.analysis?.bias_label,
         }),
       })
       if (!resp.ok) {
