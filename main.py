@@ -2183,20 +2183,20 @@ async def get_for_you(authorization: str = Header(None)):
     Returns all stored For You articles for this user, grouped by module.
     If today has no new articles for a module, generates new ones and banks them.
     """
-    if not authorization or not authorization.startswith("Bearer "):
+    if not authorization:
         return JSONResponse({"error": "Unauthorised"}, status_code=401)
-    token = authorization.split(" ", 1)[1].strip()
-
+    token = authorization.replace("Bearer ", "").strip()
     try:
         supa = get_supabase()
         user_res = supa.auth.get_user(token)
-        if not user_res or not user_res.user:
+        user = user_res.user if hasattr(user_res, 'user') else None
+        if not user:
             return JSONResponse({"error": "Unauthorised"}, status_code=401)
-        user_id = str(user_res.user.id)
-        user_email = user_res.user.email or ""
-    except Exception:
+        user_id = str(user.id)
+        user_email = user.email or ""
+    except Exception as e:
+        logger.error(f"For-you auth error: {e}")
         return JSONResponse({"error": "Unauthorised"}, status_code=401)
-
     from datetime import date as _date
     today = str(_date.today())
     svc = get_supabase()
