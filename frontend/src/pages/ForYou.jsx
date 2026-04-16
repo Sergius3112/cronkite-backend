@@ -76,7 +76,7 @@ function ArticleCard({ article, moduleId, moduleTitle, session, struggleProfile 
         },
         body: JSON.stringify({
           url: article.url,
-          article_content: article.reason || '',
+          article_content: article.content || article.reason || article.title || '',
           message: text,
           history: newHistory,
           student_id: session?.user?.id || null,

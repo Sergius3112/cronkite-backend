@@ -1989,59 +1989,62 @@ async def read_article(url: str = ""):
         # Step 1: httpx + BeautifulSoup
         try:
             async with httpx.AsyncClient(timeout=10, follow_redirects=True, headers={
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
                 from bs4 import BeautifulSoup
                 soup = BeautifulSoup(resp.text, 'html.parser')
                 title = soup.find('title').get_text(strip=True) if soup.find('title') else ''
-
-                selectors = ['article', '[class*="article-body"]', '[class*="article__body"]',
-                            '[class*="story-body"]', '[class*="content-body"]', '[class*="post-content"]',
-                            '[class*="entry-content"]', '[itemprop="articleBody"]', 'main', '[role="main"]']
-
-                for selector in selectors:
+                for selector in ['article', '[class*="article-body"]', '[class*="article__body"]',
+                                '[class*="story-body"]', '[class*="content-body"]', '[class*="post-content"]',
+                                '[class*="entry-content"]', '[itemprop="articleBody"]', 'main', '[role="main"]']:
                     elements = soup.select(selector)
                     if elements:
                         text = ' '.join(el.get_text(separator=' ', strip=True) for el in elements)
                         if len(text) > 200:
                             content = text
                             break
-
                 if not content:
                     paragraphs = soup.find_all('p')
                     content = ' '.join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 50)
         except Exception as e:
             logger.info(f"httpx failed for {url}: {e}")
 
-        if is_js_wall(content):
-            content = ''
-
-        # Step 2: Playwright (JS-rendered sites)
-        if not content or len(content) < 200:
+        # Step 2: Playwright
+        JS_SIGNALS = ['javascript is disabled', 'enable javascript', 'please enable javascript']
+        if not content or len(content) < 200 or any(s in content.lower() for s in JS_SIGNALS):
             logger.info(f"Trying Playwright for {url}")
-            playwright_result = await scrape_with_playwright(url)
-            if playwright_result.get('content') and len(playwright_result['content']) > 200:
-                content = playwright_result['content']
-                if not title:
-                    title = playwright_result.get('title', '')
+            try:
+                playwright_result = await scrape_with_playwright(url)
+                if playwright_result.get('content') and len(playwright_result['content']) > 200:
+                    content = playwright_result['content']
+                    if not title:
+                        title = playwright_result.get('title', '')
+            except Exception as e:
+                logger.info(f"Playwright failed: {e}")
 
-        if is_js_wall(content):
-            content = ''
-
-        # Step 3: Claude web search (paywalled/blocked — used sparingly)
+        # Step 3: Claude web search
         if not content or len(content) < 200:
             logger.info(f"Trying Claude web search for {url}")
-            claude_result = await fetch_article_with_claude(url)
-            if claude_result.get('content') and len(claude_result['content']) > 200:
-                content = claude_result['content']
-                if not title:
-                    title = claude_result.get('title', '')
-                if claude_result.get('source'):
-                    source = claude_result['source']
+            try:
+                claude_result = await fetch_article_with_claude(url)
+                if claude_result.get('content') and len(claude_result['content']) > 200:
+                    content = claude_result['content']
+                    if not title:
+                        title = claude_result.get('title', '')
+                    if claude_result.get('source'):
+                        source = claude_result['source']
+            except Exception as e:
+                logger.info(f"Claude search failed: {e}")
 
-        # Final check
+        # Clean with Haiku if content found
+        if content and len(content) > 200:
+            try:
+                content = clean_article_with_claude(content, url)
+            except:
+                pass
+
         if not content or len(content) < 200:
             return JSONResponse({
                 "title": title or url,
@@ -2051,10 +2054,6 @@ async def read_article(url: str = ""):
                 "blocked": True,
                 "error": "Could not extract content from this URL."
             })
-
-        # Clean extracted content with Claude Haiku
-        if content and len(content) > 200:
-            content = clean_article_with_claude(content, url)
 
         return JSONResponse({
             "title": title,
@@ -2162,13 +2161,15 @@ async def generate_for_you_suggestions(modules: list) -> list:
             bias = BIAS_DOMAIN_MAP.get(domain, 'centre')
 
             source = item.get('source') or domain
+            snippet = item.get('content', item.get('snippet', ''))
             results_out.append({
                 'module_id': mod_id,
                 'module_title': mod_title,
                 'title': title,
                 'url': url,
                 'source': source,
-                'reason': item.get('content', '')[:180] or f"Relevant to your {mod_title} module.",
+                'reason': snippet[:180] or f"Relevant to your {mod_title} module.",
+                'content': snippet[:2000],
                 'bias': bias,
                 'published_date': str(pub_date) if pub_date else None,
             })
@@ -2244,6 +2245,7 @@ async def get_for_you(authorization: str = Header(None)):
                     "url": art['url'],
                     "source": art.get('source'),
                     "reason": art.get('reason'),
+                    "content": art.get('content'),
                     "bias": art.get('bias'),
                     "published_date": art.get('published_date'),
                     "date_added": today,
