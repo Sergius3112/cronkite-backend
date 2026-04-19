@@ -193,3 +193,167 @@ def auto_populate_entity(name: str, entity_type: str) -> Optional[dict]:
     except Exception as e:
         logger.error(f"Entity auto-populate error: {e}")
         return None
+
+
+# ── Article score caching ───────────────────────────────────────────────────
+
+def get_cached_article_score(url: str) -> Optional[dict]:
+    """Look up a previously-scored article by URL from article_scores_cache."""
+    try:
+        sb_url = os.getenv('SUPABASE_URL', '')
+        sb_key = os.getenv('SUPABASE_SERVICE_KEY', '')
+        if not sb_url or not sb_key:
+            return None
+        svc = create_client(sb_url, sb_key)
+        result = svc.table('article_scores_cache').select('*').eq('url', url).limit(1).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Cache lookup error: {e}")
+        return None
+
+
+def cache_article_score(url: str, title: str, source: str, credibility: dict, bias: dict, summary: str = '') -> None:
+    """Store a scored article for future fast retrieval. Upserts on url."""
+    try:
+        sb_url = os.getenv('SUPABASE_URL', '')
+        sb_key = os.getenv('SUPABASE_SERVICE_KEY', '')
+        if not sb_url or not sb_key:
+            return
+        svc = create_client(sb_url, sb_key)
+        svc.table('article_scores_cache').upsert({
+            'url': url,
+            'title': title or '',
+            'source': source or '',
+            'summary': summary or '',
+            'credibility_score': credibility.get('score', 50),
+            'credibility_components': credibility.get('components', {}),
+            'source_trust': credibility.get('source_trust'),
+            'author_trust': credibility.get('author_trust'),
+            'conflict_of_interest_flags': credibility.get('conflict_of_interest_flags', []),
+            'bias_score': bias.get('score', 0),
+            'bias_label': bias.get('label', 'centre'),
+            'bias_components': bias.get('components', {}),
+            'formula_version': FORMULA_VERSION,
+        }, on_conflict='url').execute()
+    except Exception as e:
+        logger.error(f"Cache write error: {e}")
+
+
+# ── Student learning profile ────────────────────────────────────────────────
+
+def _empty_profile(user_id: str) -> dict:
+    return {
+        'user_id': user_id,
+        'ability_level': 'unknown',          # unknown | emerging | developing | confident | advanced
+        'strengths': [],                      # list of technique/concept names
+        'struggles': [],                      # list of technique/concept names
+        'observations_count': 0,
+        'last_techniques_covered': [],        # rolling last 10
+        'preferred_depth': 'medium',          # short | medium | deep
+        'notes': '',
+    }
+
+
+def get_student_profile(user_id: str) -> dict:
+    """Load a student's learning profile. Returns empty defaults if none exists."""
+    try:
+        sb_url = os.getenv('SUPABASE_URL', '')
+        sb_key = os.getenv('SUPABASE_SERVICE_KEY', '')
+        if not sb_url or not sb_key:
+            return _empty_profile(user_id)
+        svc = create_client(sb_url, sb_key)
+        result = svc.table('student_learning_profiles').select('*').eq('user_id', user_id).limit(1).execute()
+        if result.data:
+            return result.data[0]
+        return _empty_profile(user_id)
+    except Exception as e:
+        logger.error(f"Profile load error: {e}")
+        return _empty_profile(user_id)
+
+
+def record_learning_observation(user_id: str, observation: dict) -> None:
+    """Record a single chat-derived observation and update the rolling profile.
+
+    observation keys (all optional except type):
+      - type: 'strength' | 'struggle' | 'technique_covered' | 'ability_signal'
+      - technique: str (e.g. 'loaded_language', 'source_evaluation')
+      - ability_signal: 'emerging' | 'developing' | 'confident' | 'advanced'
+      - note: str (short human-readable context)
+      - article_url: str
+    """
+    try:
+        sb_url = os.getenv('SUPABASE_URL', '')
+        sb_key = os.getenv('SUPABASE_SERVICE_KEY', '')
+        if not sb_url or not sb_key:
+            return
+        svc = create_client(sb_url, sb_key)
+
+        # Write raw observation
+        svc.table('learning_observations').insert({
+            'user_id': user_id,
+            'type': observation.get('type', ''),
+            'technique': observation.get('technique'),
+            'ability_signal': observation.get('ability_signal'),
+            'note': observation.get('note', ''),
+            'article_url': observation.get('article_url', ''),
+        }).execute()
+
+        # Load current profile
+        profile = get_student_profile(user_id)
+
+        strengths = list(profile.get('strengths') or [])
+        struggles = list(profile.get('struggles') or [])
+        techniques_covered = list(profile.get('last_techniques_covered') or [])
+        ability_level = profile.get('ability_level') or 'unknown'
+
+        obs_type = observation.get('type')
+        technique = observation.get('technique')
+
+        if obs_type == 'strength' and technique and technique not in strengths:
+            strengths.append(technique)
+            if technique in struggles:
+                struggles.remove(technique)
+        elif obs_type == 'struggle' and technique and technique not in struggles:
+            struggles.append(technique)
+        elif obs_type == 'technique_covered' and technique:
+            if technique in techniques_covered:
+                techniques_covered.remove(technique)
+            techniques_covered.append(technique)
+            techniques_covered = techniques_covered[-10:]
+        elif obs_type == 'ability_signal' and observation.get('ability_signal'):
+            ability_level = observation['ability_signal']
+
+        # Upsert profile
+        svc.table('student_learning_profiles').upsert({
+            'user_id': user_id,
+            'ability_level': ability_level,
+            'strengths': strengths[-20:],
+            'struggles': struggles[-20:],
+            'last_techniques_covered': techniques_covered,
+            'observations_count': (profile.get('observations_count') or 0) + 1,
+            'preferred_depth': profile.get('preferred_depth') or 'medium',
+            'notes': profile.get('notes') or '',
+        }, on_conflict='user_id').execute()
+
+    except Exception as e:
+        logger.error(f"Observation record error: {e}")
+
+
+def compare_sources_on_topic(topic: str, limit: int = 5) -> list:
+    """Return publications from the entities DB ranked by base trust, with their known lean.
+    Used by chat to answer 'how do different outlets cover this?'"""
+    try:
+        sb_url = os.getenv('SUPABASE_URL', '')
+        sb_key = os.getenv('SUPABASE_SERVICE_KEY', '')
+        if not sb_url or not sb_key:
+            return []
+        svc = create_client(sb_url, sb_key)
+        result = svc.table('publications').select(
+            'name, domain, base_trust_score, political_leaning'
+        ).order('base_trust_score', desc=True).limit(limit).execute()
+        return result.data or []
+    except Exception as e:
+        logger.error(f"Source comparison error: {e}")
+        return []

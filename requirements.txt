@@ -17,3 +17,4 @@ anthropic>=0.42.0
 resend
 openai
 playwright
+trafilatura

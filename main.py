@@ -1831,6 +1831,28 @@ async def api_briefing_send(
 
 # ── Read Article — scrape article content for the in-app reader ────────────────
 
+# In-memory per-domain strategy cache: domain → tier that last worked
+_SCRAPE_STRATEGY_CACHE: dict = {}
+
+
+def _extract_with_trafilatura(html: str, url: str) -> str:
+    """Trafilatura catches ~60-70% of news sites cleanly. First real extraction tier."""
+    try:
+        import trafilatura
+        extracted = trafilatura.extract(
+            html,
+            url=url,
+            include_comments=False,
+            include_tables=False,
+            favor_recall=True,
+            no_fallback=False,
+        )
+        return extracted or ''
+    except Exception as e:
+        logger.info(f"[TRAFILATURA] Failed for {url}: {e}")
+        return ''
+
+
 async def scrape_with_playwright(url: str) -> dict:
     """Headless browser fallback for JS-rendered articles."""
     try:
@@ -1839,48 +1861,80 @@ async def scrape_with_playwright(url: str) -> dict:
                 headless=True,
                 args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
             )
-            page = await browser.new_page(
-                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1280, 'height': 800},
             )
-            await page.goto(url, wait_until='networkidle', timeout=15000)
+            page = await context.new_page()
 
-            # Try selectors in priority order
-            content = ''
-            for selector in ['article', '[class*="article-body"]', '[class*="article__body"]', '[class*="story-body"]', 'main']:
-                try:
-                    el = await page.query_selector(selector)
-                    if el:
-                        text = await el.inner_text()
-                        if len(text) > 200:
-                            content = text
-                            break
-                except Exception:
-                    continue
+            # domcontentloaded is far more reliable than networkidle for news sites
+            # (trackers/analytics keep the network busy indefinitely on most publishers)
+            try:
+                await page.goto(url, wait_until='domcontentloaded', timeout=20000)
+            except Exception as e:
+                logger.info(f"[PLAYWRIGHT] goto failed for {url}: {e}")
+                await browser.close()
+                return {'content': '', 'title': ''}
 
-            # Fallback to all paragraphs
-            if not content:
-                paragraphs = await page.query_selector_all('p')
-                texts = []
-                for par in paragraphs:
-                    t = await par.inner_text()
-                    if len(t.strip()) > 50:
-                        texts.append(t.strip())
-                content = '\n\n'.join(texts)
+            # Wait for actual content to appear (up to 5s extra)
+            try:
+                await page.wait_for_selector(
+                    'article, main, [class*="article"], [class*="story"], [itemprop="articleBody"]',
+                    timeout=5000,
+                )
+            except Exception:
+                pass  # Some sites lack these selectors; extract anyway
 
+            # Get the full HTML and let trafilatura extract from it
+            html = await page.content()
             title = await page.title()
             await browser.close()
+
+            content = _extract_with_trafilatura(html, url)
+
+            # Fallback: direct paragraph extraction if trafilatura misses
+            if not content or len(content) < 200:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(html, 'html.parser')
+                for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form']):
+                    tag.decompose()
+                article_el = soup.find('article') or soup.find('main')
+                if article_el:
+                    paragraphs = article_el.find_all('p')
+                else:
+                    paragraphs = soup.find_all('p')
+                content = '\n\n'.join(
+                    p.get_text(strip=True) for p in paragraphs
+                    if len(p.get_text(strip=True)) > 40
+                )
+
             return {'content': content, 'title': title}
     except Exception as e:
-        logger.error(f"Playwright scrape error: {e}")
+        logger.error(f"[PLAYWRIGHT] Scrape error for {url}: {e}")
         return {'content': '', 'title': ''}
 
 
+JUNK_MARKERS = [
+    'cookie policy', 'accept cookies', 'subscribe now', 'sign in to continue',
+    'manage consent', 'privacy preferences', 'create your account',
+]
+
+
+def should_clean(content: str) -> bool:
+    """Only run Haiku cleaner if content is long AND contains obvious junk."""
+    if len(content) < 5000:
+        return False
+    lower = content.lower()
+    return any(marker in lower for marker in JUNK_MARKERS)
+
+
 def clean_article_with_claude(raw_text: str, url: str) -> str:
-    """Use Claude Haiku to clean scraped article text."""
+    """Use Claude Haiku to strip navigation/cookie/subscribe junk. Skip if clean."""
+    if not should_clean(raw_text):
+        return raw_text
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-
         response = client.messages.create(
             model='claude-haiku-4-5-20251001',
             max_tokens=4000,
@@ -1888,63 +1942,64 @@ def clean_article_with_claude(raw_text: str, url: str) -> str:
                 "role": "user",
                 "content": f"""You are given raw scraped text from a news article at {url}.
 
-Clean and structure the text as follows:
-
-1. Extract the main article body — remove navigation menus, headers, footers, advertisement text, cookie notices, subscription prompts, social media sharing prompts, and unrelated link lists.
-
-2. Keep the comments section if present, but clearly separate it from the article with this exact marker on its own line:
+Remove only: navigation menus, headers, footers, ads, cookie notices, subscription prompts, social-share prompts, unrelated link lists.
+Keep: the full article body, author, date, and reader comments (if any) separated by this exact line marker:
 --- READER COMMENTS ---
 
-3. Keep the author name and publication date.
-
-4. Return the cleaned article first, then the comments section (if any) after the marker. No explanation, no preamble, no markdown formatting — just the cleaned text.
+Return the cleaned text only. No preamble, no explanation, no markdown fences.
 
 Raw text:
 {raw_text[:8000]}"""
             }]
         )
-
         cleaned = response.content[0].text.strip()
-        return cleaned if len(cleaned) > 100 else raw_text
+        # Safety net: if Haiku returns something much shorter than original, don't trust it
+        if len(cleaned) < len(raw_text) * 0.3:
+            logger.warning(f"[HAIKU-CLEAN] Output suspiciously short ({len(cleaned)} vs {len(raw_text)}), keeping raw")
+            return raw_text
+        return cleaned
     except Exception as e:
-        logger.error(f"Claude clean error: {e}")
+        logger.error(f"[HAIKU-CLEAN] Error: {e}")
         return raw_text
 
 
 def is_js_wall(text: str) -> bool:
+    if not text:
+        return False
     signals = ['javascript is disabled', 'enable javascript', 'please enable javascript']
     return any(s in text.lower() for s in signals)
 
 
 async def fetch_article_with_claude(url: str) -> dict:
-    """Last-resort fallback: use Claude web search to fetch article content."""
+    """Last-resort fallback: use Claude web_fetch (NOT web_search) to retrieve article."""
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
 
         response = client.messages.create(
             model='claude-sonnet-4-5',
-            max_tokens=2000,
-            tools=[{"type": "web_search_20250305", "name": "web_search"}],
+            max_tokens=3000,
+            tools=[{"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": 2}],
+            extra_headers={"anthropic-beta": "web-fetch-2025-09-10"},
             messages=[{
                 "role": "user",
-                "content": f"""Fetch the full text content of this URL: {url}
+                "content": f"""Fetch the full content at this URL: {url}
 
-Return ONLY a JSON object with no markdown, no preamble:
+After fetching, return ONLY a JSON object (no markdown fences, no preamble):
 {{
   "title": "article or post title",
-  "content": "full text content, as much as possible",
+  "content": "full article body text, as complete as possible",
   "source": "publication or platform name",
   "author": "author name if available"
 }}
 
-If this is a tweet or social media post, include the full post text and any context. If paywalled, include whatever is publicly accessible."""
+If paywalled, include whatever text is publicly accessible."""
             }]
         )
 
         result_text = ''
         for block in response.content:
-            if hasattr(block, 'text'):
+            if getattr(block, 'type', None) == 'text':
                 result_text += block.text
 
         result_text = result_text.strip()
@@ -1952,120 +2007,139 @@ If this is a tweet or social media post, include the full post text and any cont
             result_text = result_text.split('```')[1]
             if result_text.startswith('json'):
                 result_text = result_text[4:]
+            result_text = result_text.rsplit('```', 1)[0]
 
-        parsed = json.loads(result_text.strip())
-        return parsed
+        start = result_text.find('{')
+        end = result_text.rfind('}') + 1
+        if start >= 0 and end > start:
+            return json.loads(result_text[start:end])
+        return {}
     except Exception as e:
-        logger.error(f"Claude fetch error: {e}")
+        logger.error(f"[CLAUDE-FETCH] Error for {url}: {e}")
         return {}
 
 
 @app.get("/api/read-article")
 async def read_article(url: str = ""):
-    """Fetch and extract article text/title for the Cronkite Article Reader."""
+    """Fetch and extract article text/title for the Cronkite Article Reader.
+
+    Tiered strategy:
+      0. Block known app-only domains
+      1. httpx + trafilatura (fast, catches most news sites)
+      2. httpx + BeautifulSoup paragraph fallback
+      3. Playwright (JS-rendered sites)
+      4. Claude web_fetch (paywalled/anti-bot)
+    """
     if not url:
         return JSONResponse({"error": "Missing url parameter"}, status_code=400)
 
-    # Block domains that are genuinely inaccessible
-    BLOCKED_DOMAINS = ['tiktok.com', 'facebook.com', 'linkedin.com']
+    BLOCKED_DOMAINS = ['tiktok.com', 'facebook.com', 'linkedin.com', 'instagram.com']
     from urllib.parse import urlparse
     parsed = urlparse(url)
     hostname = (parsed.netloc or '').replace('www.', '')
     if any(d in hostname for d in BLOCKED_DOMAINS):
         return JSONResponse({
-            "title": url,
-            "content": None,
-            "source": hostname,
-            "url": url,
+            "title": url, "content": None, "source": hostname, "url": url,
             "blocked": True,
-            "error": "This platform requires a native app to access. Use the Cronkite app when available."
+            "error": "This platform requires a native app. Use Cronkite mobile when available."
         })
 
-    try:
-        content = ''
-        title = ''
-        source = parsed.netloc.replace('www.', '') if parsed.netloc else url
+    content = ''
+    title = ''
+    source = hostname or url
+    tier_used = None
+    cached_strategy = _SCRAPE_STRATEGY_CACHE.get(hostname)
 
-        # Step 1: httpx + BeautifulSoup
+    # ── Tier 1 + 2: httpx fetch, trafilatura then BeautifulSoup ──────────────
+    if cached_strategy in (None, 'httpx', 'trafilatura', 'beautifulsoup'):
         try:
-            async with httpx.AsyncClient(timeout=10, follow_redirects=True, headers={
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            async with httpx.AsyncClient(timeout=12, follow_redirects=True, headers={
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-GB,en;q=0.9',
             }) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
+                html = resp.text
+
+            # Tier 1: trafilatura
+            content = _extract_with_trafilatura(html, url)
+            if content and len(content) >= 300 and not is_js_wall(content):
+                tier_used = 'trafilatura'
                 from bs4 import BeautifulSoup
-                soup = BeautifulSoup(resp.text, 'html.parser')
+                soup = BeautifulSoup(html, 'html.parser')
                 title = soup.find('title').get_text(strip=True) if soup.find('title') else ''
-
-                selectors = ['article', '[class*="article-body"]', '[class*="article__body"]',
-                            '[class*="story-body"]', '[class*="content-body"]', '[class*="post-content"]',
-                            '[class*="entry-content"]', '[itemprop="articleBody"]', 'main', '[role="main"]']
-
-                for selector in selectors:
-                    elements = soup.select(selector)
-                    if elements:
-                        text = ' '.join(el.get_text(separator=' ', strip=True) for el in elements)
-                        if len(text) > 200:
-                            content = text
-                            break
-
-                if not content:
+                logger.info(f"[SCRAPE] trafilatura success for {hostname} ({len(content)} chars)")
+            else:
+                # Tier 2: BeautifulSoup paragraph fallback
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(html, 'html.parser')
+                title = soup.find('title').get_text(strip=True) if soup.find('title') else ''
+                for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form']):
+                    tag.decompose()
+                article_el = soup.find('article') or soup.find('main')
+                if article_el:
+                    paragraphs = article_el.find_all('p')
+                else:
                     paragraphs = soup.find_all('p')
-                    content = ' '.join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 50)
+                bs_content = '\n\n'.join(
+                    p.get_text(strip=True) for p in paragraphs
+                    if len(p.get_text(strip=True)) > 40
+                )
+                if bs_content and len(bs_content) >= 300 and not is_js_wall(bs_content):
+                    content = bs_content
+                    tier_used = 'beautifulsoup'
+                    logger.info(f"[SCRAPE] bs4 success for {hostname} ({len(content)} chars)")
+                else:
+                    content = ''
         except Exception as e:
-            logger.info(f"httpx failed for {url}: {e}")
-
-        if is_js_wall(content):
+            logger.info(f"[SCRAPE] httpx tier failed for {hostname}: {e}")
             content = ''
 
-        # Step 2: Playwright (JS-rendered sites)
-        if not content or len(content) < 200:
-            logger.info(f"Trying Playwright for {url}")
-            playwright_result = await scrape_with_playwright(url)
-            if playwright_result.get('content') and len(playwright_result['content']) > 200:
-                content = playwright_result['content']
-                if not title:
-                    title = playwright_result.get('title', '')
+    # ── Tier 3: Playwright ───────────────────────────────────────────────────
+    if (not content or len(content) < 300) and cached_strategy != 'claude_fetch':
+        logger.info(f"[SCRAPE] trying Playwright for {hostname}")
+        pw_result = await scrape_with_playwright(url)
+        if pw_result.get('content') and len(pw_result['content']) >= 300 and not is_js_wall(pw_result['content']):
+            content = pw_result['content']
+            if not title:
+                title = pw_result.get('title', '')
+            tier_used = 'playwright'
+            logger.info(f"[SCRAPE] playwright success for {hostname} ({len(content)} chars)")
 
-        if is_js_wall(content):
-            content = ''
+    # ── Tier 4: Claude web_fetch ─────────────────────────────────────────────
+    if not content or len(content) < 300:
+        logger.info(f"[SCRAPE] trying Claude web_fetch for {hostname}")
+        cf_result = await fetch_article_with_claude(url)
+        if cf_result.get('content') and len(cf_result['content']) >= 200:
+            content = cf_result['content']
+            if not title:
+                title = cf_result.get('title', '')
+            if cf_result.get('source'):
+                source = cf_result['source']
+            tier_used = 'claude_fetch'
+            logger.info(f"[SCRAPE] claude_fetch success for {hostname} ({len(content)} chars)")
 
-        # Step 3: Claude web search (paywalled/blocked — used sparingly)
-        if not content or len(content) < 200:
-            logger.info(f"Trying Claude web search for {url}")
-            claude_result = await fetch_article_with_claude(url)
-            if claude_result.get('content') and len(claude_result['content']) > 200:
-                content = claude_result['content']
-                if not title:
-                    title = claude_result.get('title', '')
-                if claude_result.get('source'):
-                    source = claude_result['source']
+    # Cache the winning strategy for this domain
+    if tier_used:
+        _SCRAPE_STRATEGY_CACHE[hostname] = tier_used
 
-        # Final check
-        if not content or len(content) < 200:
-            return JSONResponse({
-                "title": title or url,
-                "content": None,
-                "source": source,
-                "url": url,
-                "blocked": True,
-                "error": "Could not extract content from this URL."
-            })
-
-        # Clean extracted content with Claude Haiku
-        if content and len(content) > 200:
-            content = clean_article_with_claude(content, url)
-
+    # All tiers failed
+    if not content or len(content) < 200:
+        logger.warning(f"[SCRAPE] ALL TIERS FAILED for {hostname}")
         return JSONResponse({
-            "title": title,
-            "content": content,
-            "source": source,
-            "url": url
+            "title": title or url, "content": None, "source": source, "url": url,
+            "blocked": True,
+            "error": "Could not extract content from this URL."
         })
 
-    except Exception as e:
-        logger.error(f"read-article error: {e}")
-        return JSONResponse({"blocked": True, "url": url, "error": str(e)})
+    # Only clean if content looks junk-contaminated
+    content = clean_article_with_claude(content, url)
+
+    return JSONResponse({
+        "title": title, "content": content, "source": source, "url": url,
+        "tier": tier_used,
+    })
 
 
 # ── For You — AI-suggested articles matched to student modules ────────────────
