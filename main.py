@@ -1919,6 +1919,55 @@ JUNK_MARKERS = [
     'manage consent', 'privacy preferences', 'create your account',
 ]
 
+# Signatures of CDN block pages, bot walls, and paywall stubs that look like
+# valid content but contain no article text.
+BLOCK_PAGE_SIGNATURES = [
+    'request blocked',
+    'access denied',
+    'cloudfront',
+    'attention required! | cloudflare',
+    'checking your browser before accessing',
+    'please enable cookies',
+    'please refresh the page',
+    'your access to this site has been limited',
+    'pardon our interruption',
+    'datadome',
+    'we are checking your browser',
+    'verify you are a human',
+    'press and hold to confirm',
+    'one more step',
+]
+
+# Signatures that indicate a paywall is in front of the article body.
+PAYWALL_SIGNATURES = [
+    'subscribe to continue reading',
+    'subscribe to read this article',
+    'sign in to continue reading',
+    'register for free to continue',
+    'this article is for subscribers',
+    'become a subscriber',
+    'unlock this article',
+    'create a free account to read',
+]
+
+
+def is_block_page(content: str) -> bool:
+    """Detect CDN block pages and bot walls masquerading as article content."""
+    if not content:
+        return True
+    lower = content.lower()
+    if any(sig in lower for sig in BLOCK_PAGE_SIGNATURES):
+        return True
+    return False
+
+
+def is_paywalled(content: str) -> bool:
+    """Detect publisher paywall pages distinct from CDN blocks."""
+    if not content:
+        return False
+    lower = content.lower()
+    return any(sig in lower for sig in PAYWALL_SIGNATURES)
+
 
 def should_clean(content: str) -> bool:
     """Only run Haiku cleaner if content is long AND contains obvious junk."""
@@ -2024,25 +2073,41 @@ async def read_article(url: str = ""):
     """Fetch and extract article text/title for the Cronkite Article Reader.
 
     Tiered strategy:
-      0. Block known app-only domains
+      0. Block known app-only domains (return access_status=requires_app)
       1. httpx + trafilatura (fast, catches most news sites)
       2. httpx + BeautifulSoup paragraph fallback
       3. Playwright (JS-rendered sites)
       4. Claude web_fetch (paywalled/anti-bot)
+
+    Returns access_status: 'free' | 'paywalled' | 'requires_app' | 'blocked'
+    so the frontend can show appropriate messaging.
     """
     if not url:
         return JSONResponse({"error": "Missing url parameter"}, status_code=400)
 
-    BLOCKED_DOMAINS = ['tiktok.com', 'facebook.com', 'linkedin.com', 'instagram.com']
+    APP_ONLY_DOMAINS = {
+        'tiktok.com': 'TikTok',
+        'instagram.com': 'Instagram',
+        'facebook.com': 'Facebook',
+        'linkedin.com': 'LinkedIn',
+        'x.com': 'X (Twitter)',
+        'twitter.com': 'X (Twitter)',
+    }
     from urllib.parse import urlparse
     parsed = urlparse(url)
     hostname = (parsed.netloc or '').replace('www.', '')
-    if any(d in hostname for d in BLOCKED_DOMAINS):
-        return JSONResponse({
-            "title": url, "content": None, "source": hostname, "url": url,
-            "blocked": True,
-            "error": "This platform requires a native app. Use Cronkite mobile when available."
-        })
+
+    for blocked_dom, platform_name in APP_ONLY_DOMAINS.items():
+        if blocked_dom in hostname:
+            return JSONResponse({
+                "title": url, "content": None, "source": hostname, "url": url,
+                "blocked": True,
+                "access_status": "requires_app",
+                "platform": platform_name,
+                "error": f"This is {platform_name} content. Paste the post text below to analyse it with Cronkite, or use the Cronkite mobile share sheet (coming soon).",
+            })
+
+    MIN_CONTENT_LENGTH = 600
 
     content = ''
     title = ''
@@ -2064,13 +2129,17 @@ async def read_article(url: str = ""):
 
             # Tier 1: trafilatura
             content = _extract_with_trafilatura(html, url)
-            if content and len(content) >= 300 and not is_js_wall(content):
+            if content and len(content) >= MIN_CONTENT_LENGTH and not is_js_wall(content) and not is_block_page(content):
                 tier_used = 'trafilatura'
                 from bs4 import BeautifulSoup
                 soup = BeautifulSoup(html, 'html.parser')
                 title = soup.find('title').get_text(strip=True) if soup.find('title') else ''
                 logger.info(f"[SCRAPE] trafilatura success for {hostname} ({len(content)} chars)")
             else:
+                if content and is_block_page(content):
+                    logger.info(f"[SCRAPE] trafilatura returned block page for {hostname}, advancing")
+                content = ''
+
                 # Tier 2: BeautifulSoup paragraph fallback
                 from bs4 import BeautifulSoup
                 soup = BeautifulSoup(html, 'html.parser')
@@ -2086,7 +2155,7 @@ async def read_article(url: str = ""):
                     p.get_text(strip=True) for p in paragraphs
                     if len(p.get_text(strip=True)) > 40
                 )
-                if bs_content and len(bs_content) >= 300 and not is_js_wall(bs_content):
+                if bs_content and len(bs_content) >= MIN_CONTENT_LENGTH and not is_js_wall(bs_content) and not is_block_page(bs_content):
                     content = bs_content
                     tier_used = 'beautifulsoup'
                     logger.info(f"[SCRAPE] bs4 success for {hostname} ({len(content)} chars)")
@@ -2097,22 +2166,26 @@ async def read_article(url: str = ""):
             content = ''
 
     # ── Tier 3: Playwright ───────────────────────────────────────────────────
-    if (not content or len(content) < 300) and cached_strategy != 'claude_fetch':
+    if (not content or len(content) < MIN_CONTENT_LENGTH) and cached_strategy != 'claude_fetch':
         logger.info(f"[SCRAPE] trying Playwright for {hostname}")
         pw_result = await scrape_with_playwright(url)
-        if pw_result.get('content') and len(pw_result['content']) >= 300 and not is_js_wall(pw_result['content']):
-            content = pw_result['content']
+        pw_content = pw_result.get('content', '')
+        if pw_content and len(pw_content) >= MIN_CONTENT_LENGTH and not is_js_wall(pw_content) and not is_block_page(pw_content):
+            content = pw_content
             if not title:
                 title = pw_result.get('title', '')
             tier_used = 'playwright'
             logger.info(f"[SCRAPE] playwright success for {hostname} ({len(content)} chars)")
+        elif pw_content and is_block_page(pw_content):
+            logger.info(f"[SCRAPE] playwright returned block page for {hostname}, advancing to claude_fetch")
 
     # ── Tier 4: Claude web_fetch ─────────────────────────────────────────────
-    if not content or len(content) < 300:
+    if not content or len(content) < MIN_CONTENT_LENGTH:
         logger.info(f"[SCRAPE] trying Claude web_fetch for {hostname}")
         cf_result = await fetch_article_with_claude(url)
-        if cf_result.get('content') and len(cf_result['content']) >= 200:
-            content = cf_result['content']
+        cf_content = cf_result.get('content', '')
+        if cf_content and len(cf_content) >= 200 and not is_block_page(cf_content):
+            content = cf_content
             if not title:
                 title = cf_result.get('title', '')
             if cf_result.get('source'):
@@ -2120,41 +2193,232 @@ async def read_article(url: str = ""):
             tier_used = 'claude_fetch'
             logger.info(f"[SCRAPE] claude_fetch success for {hostname} ({len(content)} chars)")
 
-    # Cache the winning strategy for this domain
     if tier_used:
         _SCRAPE_STRATEGY_CACHE[hostname] = tier_used
 
-    # All tiers failed
-    if not content or len(content) < 200:
-        logger.warning(f"[SCRAPE] ALL TIERS FAILED for {hostname}")
+    # Determine access_status for honest frontend messaging
+    if content and len(content) >= 200:
+        access_status = 'paywalled' if is_paywalled(content) else 'free'
+
+        if access_status == 'free':
+            content = clean_article_with_claude(content, url)
+
         return JSONResponse({
-            "title": title or url, "content": None, "source": source, "url": url,
-            "blocked": True,
-            "error": "Could not extract content from this URL."
+            "title": title, "content": content, "source": source, "url": url,
+            "tier": tier_used,
+            "access_status": access_status,
+            "blocked": False,
         })
 
-    # Only clean if content looks junk-contaminated
-    content = clean_article_with_claude(content, url)
+    # All tiers failed — distinguish paywall from generic block
+    logger.warning(f"[SCRAPE] ALL TIERS FAILED for {hostname}")
+    return JSONResponse({
+        "title": title or url, "content": None, "source": source, "url": url,
+        "blocked": True,
+        "access_status": "blocked",
+        "error": "We couldn't read this article automatically. If it's behind a paywall, sign in via your school's subscription and paste the article text using the box below. Cronkite will analyse pasted text the same way it analyses scraped articles.",
+    })
+
+
+@app.get("/api/article-scores")
+async def article_scores(url: str = ""):
+    """Return Cronkite Truth Formula scores for an article URL.
+
+    Strategy:
+      1. Check article_scores_cache for existing score — return immediately if found
+      2. Otherwise: scrape, run the credibility + bias scorers, cache the result
+    """
+    if not url:
+        return JSONResponse({"error": "Missing url parameter"}, status_code=400)
+
+    from scoring import (
+        get_cached_article_score, cache_article_score,
+        score_article_credibility, score_article_bias,
+        FORMULA_VERSION,
+    )
+
+    cached = get_cached_article_score(url)
+    if cached:
+        return JSONResponse({
+            "cached": True,
+            "url": url,
+            "title": cached.get('title', ''),
+            "source": cached.get('source', ''),
+            "credibility": {
+                "score": cached.get('credibility_score', 50),
+                "components": cached.get('credibility_components', {}),
+                "source_trust": cached.get('source_trust'),
+                "author_trust": cached.get('author_trust'),
+                "conflict_of_interest_flags": cached.get('conflict_of_interest_flags', []),
+            },
+            "bias": {
+                "score": cached.get('bias_score', 0),
+                "label": cached.get('bias_label', 'centre'),
+                "components": cached.get('bias_components', {}),
+            },
+            "formula_version": cached.get('formula_version', FORMULA_VERSION),
+        })
+
+    article_resp = await read_article(url)
+    article_data = json.loads(article_resp.body) if hasattr(article_resp, 'body') else {}
+
+    if article_data.get('blocked') or not article_data.get('content'):
+        return JSONResponse({
+            "cached": False,
+            "url": url,
+            "error": "Could not score this article — content unavailable.",
+            "access_status": article_data.get('access_status', 'blocked'),
+            "blocked": True,
+        })
+
+    title = article_data.get('title', '')
+    content = article_data.get('content', '')
+    source = article_data.get('source', '')
+
+    try:
+        credibility = score_article_credibility(
+            url=url, title=title, content=content, source=source, author=''
+        )
+        bias = score_article_bias(
+            url=url, title=title, content=content, source=source
+        )
+    except Exception as e:
+        logger.error(f"[SCORE] Failed for {url}: {e}")
+        return JSONResponse({
+            "cached": False, "url": url, "error": "Scoring engine error.", "blocked": True,
+        })
+
+    try:
+        cache_article_score(
+            url=url, title=title, source=source,
+            credibility=credibility, bias=bias,
+            summary=content[:500],
+        )
+    except Exception as e:
+        logger.warning(f"[SCORE] Cache write failed: {e}")
 
     return JSONResponse({
-        "title": title, "content": content, "source": source, "url": url,
-        "tier": tier_used,
+        "cached": False,
+        "url": url,
+        "title": title,
+        "source": source,
+        "credibility": credibility,
+        "bias": bias,
+        "access_status": article_data.get('access_status', 'free'),
+        "formula_version": FORMULA_VERSION,
     })
+
+
+class ScoreTextRequest(BaseModel):
+    text: str
+    title: str = ''
+    source: str = ''
+    url: str = ''
+
+
+@app.post("/api/score-text")
+async def score_text(req: ScoreTextRequest):
+    """Run the Truth Formula on user-pasted article text."""
+    from scoring import (
+        score_article_credibility, score_article_bias,
+        cache_article_score, FORMULA_VERSION,
+    )
+
+    if not req.text or len(req.text.strip()) < 100:
+        return JSONResponse({
+            "error": "Please paste at least 100 characters of article text.",
+        }, status_code=400)
+
+    text = req.text.strip()
+    title = req.title.strip() or text.split('\n')[0][:120]
+    source = req.source.strip() or (
+        req.url.split('/')[2].replace('www.', '') if req.url.startswith('http') else 'pasted'
+    )
+    url = req.url.strip()
+
+    try:
+        credibility = score_article_credibility(
+            url=url or 'pasted-text', title=title, content=text,
+            source=source, author='',
+        )
+        bias = score_article_bias(
+            url=url or 'pasted-text', title=title, content=text, source=source,
+        )
+    except Exception as e:
+        logger.error(f"[SCORE-TEXT] Failed: {e}")
+        return JSONResponse({"error": "Scoring engine error."}, status_code=500)
+
+    if url:
+        try:
+            cache_article_score(
+                url=url, title=title, source=source,
+                credibility=credibility, bias=bias,
+                summary=text[:500],
+            )
+        except Exception as e:
+            logger.warning(f"[SCORE-TEXT] Cache write failed: {e}")
+
+    return JSONResponse({
+        "title": title,
+        "source": source,
+        "url": url,
+        "credibility": credibility,
+        "bias": bias,
+        "input_method": "pasted_text",
+        "formula_version": FORMULA_VERSION,
+    })
+
 
 
 # ── For You — AI-suggested articles matched to student modules ────────────────
 
+# Queries designed to return EXEMPLARS of the concept, not academic analysis OF it.
 FOCUS_QUERIES = {
-    'evaluating_content': 'UK news media credibility fact checking journalism standards',
-    'persuasion_techniques': 'UK political rhetoric persuasion propaganda analysis',
-    'online_behaviour': 'UK social media misinformation online harm digital literacy',
-    'identifying_risks': 'UK misinformation fake news disinformation media',
-    'managing_information': 'UK news bias media ownership press freedom',
+    'evaluating_content': [
+        'UK news controversial claim disputed this week',
+        'viral UK headline misleading',
+        'UK tabloid sensational story',
+    ],
+    'persuasion_techniques': [
+        'UK political speech this week Farage Starmer Badenoch',
+        'UK party press release attack',
+        'UK viral political tweet controversy',
+    ],
+    'online_behaviour': [
+        'UK viral social media post misleading this week',
+        'UK influencer controversial statement',
+        'UK news comment section outrage',
+    ],
+    'identifying_risks': [
+        'UK fact check false claim viral',
+        'UK misinformation debunked this week',
+        'UK news correction retraction',
+    ],
+    'managing_information': [
+        'UK newspaper different coverage same story this week',
+        'UK media bias accusation',
+        'UK press editorial criticism',
+    ],
 }
+
+ACADEMIC_DOMAIN_PATTERNS = [
+    '.ac.uk', '.edu', 'jstor.org', 'researchgate.net', 'arxiv.org',
+    'ssrn.com', 'academia.edu', 'scholar.google', 'tandfonline.com',
+    'sciencedirect.com', 'springer.com', 'wiley.com', 'cambridge.org/core',
+    'oup.com', 'sagepub.com', 'pubmed', 'plos.org', 'nature.com/articles',
+]
+
+PREFERRED_NEWS_DOMAINS = [
+    'bbc.co.uk', 'theguardian.com', 'telegraph.co.uk', 'thetimes.co.uk',
+    'independent.co.uk', 'dailymail.co.uk', 'mirror.co.uk', 'thesun.co.uk',
+    'gbnews.com', 'news.sky.com', 'itv.com', 'channel4.com',
+    'spectator.co.uk', 'newstatesman.com', 'politico.eu',
+    'huffingtonpost.co.uk', 'metro.co.uk', 'inews.co.uk',
+]
 
 BIAS_DOMAIN_MAP = {
     'theguardian.com': 'left', 'mirror.co.uk': 'left', 'independent.co.uk': 'left',
-    'novaramedia.com': 'left', 'newstatesman.com': 'left',
+    'novaramedia.com': 'left', 'newstatesman.com': 'left', 'huffingtonpost.co.uk': 'left',
     'dailymail.co.uk': 'right', 'thetimes.co.uk': 'right', 'telegraph.co.uk': 'right',
     'thesun.co.uk': 'right', 'spectator.co.uk': 'right', 'gbnews.com': 'right',
     'express.co.uk': 'right',
@@ -2163,75 +2427,144 @@ BIAS_DOMAIN_MAP = {
 FILTER_TITLE_WORDS = ['retracted', 'correction', 'update:', "editor's note"]
 
 
-async def _url_accessible(url: str) -> bool:
-    """HEAD request to verify URL is accessible."""
+def _is_academic(url: str) -> bool:
+    lower = url.lower()
+    if lower.endswith('.pdf'):
+        return True
+    return any(pat in lower for pat in ACADEMIC_DOMAIN_PATTERNS)
+
+
+async def _url_scrapeable(url: str) -> bool:
+    """Tier-1 only verification: does trafilatura extract >=600 chars of non-junk content?"""
     try:
-        async with httpx.AsyncClient(timeout=5, follow_redirects=True) as client:
-            r = await client.head(url, headers={"User-Agent": "Mozilla/5.0"})
-            return r.status_code < 400
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True, headers={
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        }) as client:
+            r = await client.get(url)
+            if r.status_code >= 400:
+                return False
+            html = r.text
+        content = _extract_with_trafilatura(html, url)
+        if not content or len(content) < 600:
+            return False
+        if is_block_page(content) or is_paywalled(content):
+            return False
+        return True
     except Exception:
         return False
 
 
 async def generate_for_you_suggestions(modules: list) -> list:
-    """For each module (max 5), use Tavily to find recent verified UK news articles."""
+    """For each module, run multiple Tavily queries for real-world exemplars."""
     from datetime import date as _date, timedelta as _td
+    from scoring import (
+        score_article_credibility, score_article_bias, cache_article_score,
+    )
     tavily = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
-    cutoff = _date.today() - _td(days=30)
+    cutoff = _date.today() - _td(days=7)
     results_out = []
+    seen_urls: set = set()
 
     for mod in modules[:5]:
-        focus = mod.get('focus_point') or mod.get('focus_area') or ''
-        query = FOCUS_QUERIES.get(focus, 'UK news media literacy education')
+        focus = mod.get('focus_point') or mod.get('focus_area') or 'evaluating_content'
+        queries = FOCUS_QUERIES.get(focus, FOCUS_QUERIES['evaluating_content'])
         mod_id = mod.get('id') or mod.get('module_id')
         mod_title = mod.get('title') or mod.get('name') or 'Untitled'
 
-        try:
-            results = tavily.search(query=query, max_results=8, days=30)
-        except Exception as e:
-            logger.warning(f"For You Tavily failed for {mod_title}: {e}")
-            continue
-
-        for item in results.get('results', []):
-            url = item.get('url', '')
-            title = item.get('title', '')
-            if not url or not title:
+        module_candidates = []
+        for query in queries:
+            try:
+                results = tavily.search(
+                    query=query,
+                    max_results=10,
+                    days=7,
+                    search_depth='advanced',
+                    include_domains=PREFERRED_NEWS_DOMAINS,
+                )
+            except Exception as e:
+                logger.warning(f"[FOR-YOU] Tavily failed for '{query}': {e}")
                 continue
 
-            # Filter out corrections/retractions
-            if any(w in title.lower() for w in FILTER_TITLE_WORDS):
+            for item in results.get('results', []):
+                url = item.get('url', '')
+                title = item.get('title', '')
+                if not url or not title or url in seen_urls:
+                    continue
+                if _is_academic(url):
+                    continue
+                if any(w in title.lower() for w in FILTER_TITLE_WORDS):
+                    continue
+
+                pub_str = item.get('published_date') or ''
+                pub_date = None
+                if pub_str:
+                    try:
+                        pub_date = _date.fromisoformat(pub_str[:10])
+                        if pub_date < cutoff:
+                            continue
+                    except Exception:
+                        pass
+
+                seen_urls.add(url)
+                module_candidates.append({
+                    'url': url,
+                    'title': title,
+                    'published_date': str(pub_date) if pub_date else None,
+                    'snippet': item.get('content', '')[:180],
+                })
+
+        banked_for_mod = 0
+        for cand in module_candidates:
+            if banked_for_mod >= 5:
+                break
+            if not await _url_scrapeable(cand['url']):
+                logger.info(f"[FOR-YOU] Skipping unscrapeable: {cand['url']}")
                 continue
 
-            # Filter by published date if present
-            pub_str = item.get('published_date') or ''
-            pub_date = None
-            if pub_str:
-                try:
-                    pub_date = _date.fromisoformat(pub_str[:10])
-                    if pub_date < cutoff:
-                        continue
-                except Exception:
-                    pass
+            domain = cand['url'].split('/')[2].replace('www.', '') if cand['url'].startswith('http') else ''
+            bias_lean = BIAS_DOMAIN_MAP.get(domain, 'centre')
 
-            # Validate URL is accessible
-            if not await _url_accessible(url):
-                continue
+            try:
+                async with httpx.AsyncClient(timeout=8, follow_redirects=True, headers={
+                    'User-Agent': 'Mozilla/5.0'
+                }) as client:
+                    r = await client.get(cand['url'])
+                    html = r.text
+                content_for_scoring = _extract_with_trafilatura(html, cand['url']) or ''
+                credibility = score_article_credibility(
+                    url=cand['url'], title=cand['title'], content=content_for_scoring,
+                    source=domain, author='',
+                )
+                bias_score = score_article_bias(
+                    url=cand['url'], title=cand['title'], content=content_for_scoring,
+                    source=domain,
+                )
+                cache_article_score(
+                    url=cand['url'], title=cand['title'], source=domain,
+                    credibility=credibility, bias=bias_score,
+                    summary=content_for_scoring[:500],
+                )
+                cred_score = credibility.get('score', 50)
+                bias_label = bias_score.get('label', bias_lean)
+            except Exception as e:
+                logger.warning(f"[FOR-YOU] Pre-score failed for {cand['url']}: {e}")
+                cred_score = None
+                bias_label = bias_lean
 
-            # Infer bias from domain
-            domain = url.split('/')[2].replace('www.', '') if url.startswith('http') else ''
-            bias = BIAS_DOMAIN_MAP.get(domain, 'centre')
-
-            source = item.get('source') or domain
             results_out.append({
                 'module_id': mod_id,
                 'module_title': mod_title,
-                'title': title,
-                'url': url,
-                'source': source,
-                'reason': item.get('content', '')[:180] or f"Relevant to your {mod_title} module.",
-                'bias': bias,
-                'published_date': str(pub_date) if pub_date else None,
+                'title': cand['title'],
+                'url': cand['url'],
+                'source': domain,
+                'reason': cand['snippet'] or f"Relevant to your {mod_title} module.",
+                'bias': bias_label,
+                'credibility_score': cred_score,
+                'published_date': cand['published_date'],
             })
+            banked_for_mod += 1
+
+        logger.info(f"[FOR-YOU] Module '{mod_title}': banked {banked_for_mod} articles")
 
     return results_out
 
@@ -2305,6 +2638,8 @@ async def get_for_you(authorization: str = Header(None)):
                     "source": art.get('source'),
                     "reason": art.get('reason'),
                     "bias": art.get('bias'),
+                    "credibility_score": art.get('credibility_score'),
+                    "bias_label": art.get('bias'),
                     "published_date": art.get('published_date'),
                     "date_added": today,
                 }).execute()

@@ -166,6 +166,48 @@ def calculate_bias_score(claude_assessment: dict) -> dict:
     }
 
 
+def score_article_credibility(
+    url: str,
+    title: str,
+    content: str,
+    source: str,
+    author: str = '',
+) -> dict:
+    """Wrapper used by main.py endpoints — calls calculate_credibility_score
+    with the domain extracted from the URL and the author name."""
+    try:
+        from urllib.parse import urlparse as _up
+        domain = _up(url).netloc.replace('www.', '') if url.startswith('http') else source
+    except Exception:
+        domain = source
+    return calculate_credibility_score(
+        source_domain=domain,
+        author_name=author or None,
+        claude_assessment={
+            'claim_verifiability': 50,
+            'language_neutrality': 50,
+            'authorship_transparency': 50,
+            'cross_source_consensus': 50,
+        },
+    )
+
+
+def score_article_bias(
+    url: str,
+    title: str,
+    content: str,
+    source: str,
+) -> dict:
+    """Wrapper used by main.py endpoints — calls calculate_bias_score with
+    neutral defaults (0) since we don't run a full Claude analysis here)."""
+    return calculate_bias_score({
+        'lexical_bias': 0,
+        'source_selection': 0,
+        'narrative_framing': 0,
+        'omission': 0,
+    })
+
+
 def auto_populate_entity(name: str, entity_type: str) -> Optional[dict]:
     """
     Use Tavily to auto-populate an entity profile when first encountered.
