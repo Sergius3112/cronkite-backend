@@ -166,46 +166,257 @@ def calculate_bias_score(claude_assessment: dict) -> dict:
     }
 
 
-def score_article_credibility(
-    url: str,
-    title: str,
-    content: str,
-    source: str,
-    author: str = '',
-) -> dict:
-    """Wrapper used by main.py endpoints — calls calculate_credibility_score
-    with the domain extracted from the URL and the author name."""
-    try:
-        from urllib.parse import urlparse as _up
-        domain = _up(url).netloc.replace('www.', '') if url.startswith('http') else source
-    except Exception:
-        domain = source
-    return calculate_credibility_score(
-        source_domain=domain,
-        author_name=author or None,
-        claude_assessment={
-            'claim_verifiability': 50,
-            'language_neutrality': 50,
-            'authorship_transparency': 50,
-            'cross_source_consensus': 50,
-        },
-    )
+# ── ARTICLE ANALYSIS — CLAUDE-POWERED FORMULA INPUT ─────────────────────────
+
+# This function is the analytical heart of the Truth Formula. It takes raw article
+# text and returns the 9-component claude_assessment dict that calculate_credibility_score()
+# and calculate_bias_score() expect. Without this function, those aggregators default to 50/0.
+
+ARTICLE_ANALYSIS_RUBRIC = """You are Cronkite's analytical engine. You are NOT a chat model. You are scoring an article against a fixed rubric and returning JSON. No commentary, no caveats, no preamble.
+
+You must score the article on 9 components. Five contribute to credibility (0-100 scale, higher = more credible). Four contribute to bias (-100 to +100 scale, negative = left-leaning, positive = right-leaning, zero = balanced).
+
+═══════════════════════════════════════════════════════════════════
+CREDIBILITY COMPONENTS (0-100, higher = more credible)
+═══════════════════════════════════════════════════════════════════
+
+1. claim_verifiability (0-100)
+How verifiable are the article's central factual claims?
+  90-100: All key claims are specific, dated, attributed to named sources, or refer to public records (Hansard, ONS, court documents, peer-reviewed studies).
+  70-89:  Most claims are specific and attributed; a few are vague or attributed to "sources" / "experts".
+  50-69:  Mix of verifiable and unverifiable claims. Heavy use of unnamed sources or "it is understood".
+  30-49:  Mostly assertions with little attribution. Generalised claims about groups or trends without data.
+  0-29:   Vague accusations, unattributed quotes, claims that contradict public record, or pure opinion presented as fact.
+
+2. language_neutrality (0-100)
+Does the language report the story or push the reader toward a conclusion?
+  90-100: Plain factual register. No loaded adjectives. No emotive metaphors. Reads like Reuters or AP.
+  70-89:  Mostly neutral with occasional mild colouring ("controversial", "alleged").
+  50-69:  Noticeable rhetorical framing — emotive verbs, loaded adjectives, suggestive metaphors.
+  30-49:  Heavy rhetorical loading. Examples: "swarms of migrants", "Afghan knifeman" (identity-plus-crime), "tax-and-spend Labour", "far-right firebrand" applied without qualification, dehumanising metaphors (vermin, plague, parasites).
+  0-29:   Article reads as advocacy. Sustained emotive language replacing fact. Slurs, dog-whistles, or open dehumanisation.
+
+  CRITICAL — emotive language operating AS rhetoric (replacing fact with feeling) is the core thing this dimension measures. Apply equally across the political spectrum: "gammon", "TERF", "manosphere", and "Karen" all score the same way as "snowflake", "woke mob", and "feminazi".
+
+3. authorship_transparency (0-100)
+Is the author named, are their credentials clear, are conflicts of interest disclosed?
+  90-100: Author named, role/expertise stated, any relevant interests disclosed in-text or via byline.
+  70-89:  Author named, role implied. No COI section but no obvious COI either.
+  50-69:  Author named only, no context. Or staff byline ("Mail Reporter", "Telegraph staff").
+  30-49:  No author or only a publication-level attribution. Or named author writing outside their disclosed expertise.
+  0-29:   Anonymous, ghost-bylined, or written by someone with an undisclosed financial/political interest in the subject.
+
+4. cross_source_consensus (0-100)
+Without searching, judge: does this article's framing align with how mainstream UK outlets across the spectrum would report the same facts? Or is it an outlier framing?
+  90-100: Story would be reported essentially the same way by BBC, Reuters, FT, and Guardian/Telegraph (allowing for tonal differences).
+  70-89:  Core facts agree across the spectrum but framing tilts.
+  50-69:  Significant framing divergence likely between this outlet and others.
+  30-49:  Framing is contested — the same facts would be told as a different story by other outlets.
+  0-29:   The framing is an outlier. The article makes claims or implications that other mainstream outlets would not make from the same facts.
+
+5. (source_trust is provided separately by the database lookup, not by you — do not score it.)
+
+═══════════════════════════════════════════════════════════════════
+BIAS COMPONENTS (-100 to +100, negative = left, positive = right, 0 = balanced)
+═══════════════════════════════════════════════════════════════════
+
+1. lexical_bias (-100 to +100)
+Word choices that carry political loading.
+  -100 to -70: Heavy use of left-coded terms ("austerity victims", "the 1%", "billionaire class", "structural racism", "gammon", "TERF").
+  -69 to -30:  Moderate left framing in word choice.
+  -29 to +29:  Balanced or neutral vocabulary.
+  +30 to +69:  Moderate right framing ("woke mob", "elites", "lefty", "snowflake", "virtue signalling").
+  +70 to +100: Heavy right-coded terms ("invasion", "swarms", "groomers", "Marxist", "deep state", "great replacement", identity-plus-crime framing like "Afghan knifeman", "Somali rapist").
+
+2. source_selection (-100 to +100)
+Whose voices are quoted? Whose are absent?
+  Negative: Predominantly left-leaning sources (TUC, Greenpeace, Compass, Labour MPs, Owen Jones types).
+  Positive: Predominantly right-leaning sources (TaxPayers' Alliance, Reform, Conservative MPs, IEA, Spectator commentary).
+  Zero: Multiple sides represented or no advocacy sources used.
+
+3. narrative_framing (-100 to +100)
+What story does the article tell about cause and blame?
+  Negative: Frames problems as caused by inequality, capitalism, austerity, structural racism, or right-wing politics.
+  Positive: Frames problems as caused by immigration, wokeism, regulation, the EU, "the metropolitan elite", or left-wing politics.
+  Zero: Frames problem in non-partisan terms or presents multiple causal accounts.
+
+4. omission (-100 to +100)
+What does the article fail to mention that would change the reader's understanding?
+  Negative: Omits context that would make the right-wing case (e.g. cost figures, public opinion data unfavourable to left position).
+  Positive: Omits context that would make the left-wing case (e.g. structural data, historical context, voices of affected groups).
+  Zero: Comprehensive context, no glaring omissions.
+
+═══════════════════════════════════════════════════════════════════
+CALIBRATION ANCHORS (use these to set your scale)
+═══════════════════════════════════════════════════════════════════
+
+EXAMPLE A — Reuters wire copy on UK GDP figures:
+  claim_verifiability: 90, language_neutrality: 95, authorship_transparency: 70, cross_source_consensus: 95
+  lexical_bias: 0, source_selection: 0, narrative_framing: 0, omission: 0
+
+EXAMPLE B — Daily Mail story headlined "Migrant crisis spirals out of control":
+  claim_verifiability: 35, language_neutrality: 25, authorship_transparency: 50, cross_source_consensus: 30
+  lexical_bias: 75, source_selection: 60, narrative_framing: 70, omission: 60
+
+EXAMPLE C — Guardian comment piece headlined "Tory austerity is killing the NHS":
+  claim_verifiability: 50, language_neutrality: 35, authorship_transparency: 80, cross_source_consensus: 45
+  lexical_bias: -65, source_selection: -55, narrative_framing: -70, omission: -50
+
+EXAMPLE D — BBC News article on a court ruling:
+  claim_verifiability: 90, language_neutrality: 90, authorship_transparency: 75, cross_source_consensus: 90
+  lexical_bias: 0, source_selection: -5, narrative_framing: 0, omission: 5
+
+═══════════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════════
+
+Return ONLY a JSON object. No markdown fences. No preamble. No commentary.
+
+{
+  "claim_verifiability": <integer 0-100>,
+  "language_neutrality": <integer 0-100>,
+  "authorship_transparency": <integer 0-100>,
+  "cross_source_consensus": <integer 0-100>,
+  "lexical_bias": <integer -100 to 100>,
+  "source_selection": <integer -100 to 100>,
+  "narrative_framing": <integer -100 to 100>,
+  "omission": <integer -100 to 100>,
+  "rationale": {
+    "credibility_brief": "<one sentence, max 25 words, explaining the credibility assessment>",
+    "bias_brief": "<one sentence, max 25 words, explaining the bias direction>",
+    "key_phrases": ["<up to 3 short verbatim phrases from the article that drove your scoring>"]
+  }
+}"""
 
 
-def score_article_bias(
-    url: str,
-    title: str,
-    content: str,
-    source: str,
-) -> dict:
-    """Wrapper used by main.py endpoints — calls calculate_bias_score with
-    neutral defaults (0) since we don't run a full Claude analysis here)."""
-    return calculate_bias_score({
+def _default_assessment(reason: str = '', error: str = '') -> dict:
+    """Fallback assessment when analysis fails. Marked clearly so callers know
+    not to present these as real scores."""
+    return {
+        'claim_verifiability': 50,
+        'language_neutrality': 50,
+        'authorship_transparency': 50,
+        'cross_source_consensus': 50,
         'lexical_bias': 0,
         'source_selection': 0,
         'narrative_framing': 0,
         'omission': 0,
-    })
+        'rationale': {
+            'credibility_brief': 'Analysis unavailable for this article.',
+            'bias_brief': 'Analysis unavailable for this article.',
+            'key_phrases': [],
+        },
+        'analysis_failed': True,
+        'failure_reason': reason,
+        'failure_detail': error,
+    }
+
+
+def analyse_article_with_claude(
+    title: str,
+    content: str,
+    source: str = '',
+    author: str = '',
+) -> dict:
+    """Run the rubric-based analytical pass that produces a claude_assessment dict.
+
+    This is the function that calculate_credibility_score() and calculate_bias_score()
+    have always expected. Until now, callers passed empty dicts, defaulting all components.
+
+    Returns a dict shaped exactly as those aggregators expect, plus a 'rationale' field
+    that downstream consumers (chat, reader UI) can use to explain the score to students.
+
+    On failure, returns a dict with all components set to neutral defaults AND a flag
+    'analysis_failed': True so the caller can surface this honestly rather than show
+    a confidently-neutral fake score.
+    """
+    if not content or len(content.strip()) < 100:
+        return _default_assessment(reason='insufficient_content')
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+
+        # Trim content to keep token cost predictable. ~6000 chars ≈ 1500 tokens of input,
+        # which is enough for the rubric to read substantively without ballooning cost.
+        excerpt = content[:6000]
+
+        user_message = f"""Article to score:
+
+SOURCE: {source or 'unknown'}
+AUTHOR: {author or 'not stated'}
+TITLE: {title or '(no title)'}
+
+BODY:
+\"\"\"
+{excerpt}
+\"\"\"
+
+Return only the JSON object specified in the rubric. No other text."""
+
+        response = client.messages.create(
+            model='claude-sonnet-4-5',
+            max_tokens=1500,
+            system=ARTICLE_ANALYSIS_RUBRIC,
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        result_text = ''
+        for block in response.content:
+            if getattr(block, 'type', None) == 'text':
+                result_text += block.text
+        result_text = result_text.strip()
+
+        # Defensive parsing — strip markdown fences if Claude added any
+        if result_text.startswith('```'):
+            result_text = result_text.split('```', 2)[1]
+            if result_text.startswith('json'):
+                result_text = result_text[4:]
+            result_text = result_text.rsplit('```', 1)[0].strip()
+
+        start = result_text.find('{')
+        end = result_text.rfind('}') + 1
+        if start < 0 or end <= start:
+            logger.error(f"[ANALYSE] No JSON found in response: {result_text[:200]}")
+            return _default_assessment(reason='no_json')
+
+        parsed = json.loads(result_text[start:end])
+
+        # Validate all required fields exist and are in range
+        required_credibility = ['claim_verifiability', 'language_neutrality', 'authorship_transparency', 'cross_source_consensus']
+        required_bias = ['lexical_bias', 'source_selection', 'narrative_framing', 'omission']
+
+        for field in required_credibility:
+            val = parsed.get(field)
+            if not isinstance(val, (int, float)) or not (0 <= val <= 100):
+                logger.warning(f"[ANALYSE] Invalid {field}: {val}, defaulting to 50")
+                parsed[field] = 50
+
+        for field in required_bias:
+            val = parsed.get(field)
+            if not isinstance(val, (int, float)) or not (-100 <= val <= 100):
+                logger.warning(f"[ANALYSE] Invalid {field}: {val}, defaulting to 0")
+                parsed[field] = 0
+
+        # Coerce to int (rubric specifies integers)
+        for field in required_credibility + required_bias:
+            parsed[field] = int(round(parsed[field]))
+
+        # Normalise rationale shape
+        rationale = parsed.get('rationale') or {}
+        if not isinstance(rationale, dict):
+            rationale = {}
+        parsed['rationale'] = {
+            'credibility_brief': str(rationale.get('credibility_brief', ''))[:200],
+            'bias_brief': str(rationale.get('bias_brief', ''))[:200],
+            'key_phrases': [str(p)[:120] for p in (rationale.get('key_phrases') or [])][:3],
+        }
+        parsed['analysis_failed'] = False
+        return parsed
+
+    except Exception as e:
+        logger.error(f"[ANALYSE] Failed: {e}")
+        return _default_assessment(reason='exception', error=str(e)[:120])
 
 
 def auto_populate_entity(name: str, entity_type: str) -> Optional[dict]:
@@ -277,6 +488,8 @@ def cache_article_score(url: str, title: str, source: str, credibility: dict, bi
             'bias_score': bias.get('score', 0),
             'bias_label': bias.get('label', 'centre'),
             'bias_components': bias.get('components', {}),
+            'rationale': credibility.get('rationale') or bias.get('rationale') or {},
+            'analysis_failed': bool(credibility.get('analysis_failed', False) or bias.get('analysis_failed', False)),
             'formula_version': FORMULA_VERSION,
         }, on_conflict='url').execute()
     except Exception as e:
@@ -399,3 +612,102 @@ def compare_sources_on_topic(topic: str, limit: int = 5) -> list:
     except Exception as e:
         logger.error(f"Source comparison error: {e}")
         return []
+
+
+# ── COMPOSED SCORERS — full pipeline used by main.py endpoints ─────────────
+
+def score_article_credibility(
+    url: str,
+    title: str,
+    content: str,
+    source: str,
+    author: str = '',
+) -> dict:
+    """Full credibility pipeline: analyse text with rubric, then aggregate via formula.
+
+    Returns the dict shape that calculate_credibility_score() returns, plus a
+    'rationale' field so the chat and reader UIs can explain the score.
+    """
+    assessment = analyse_article_with_claude(
+        title=title, content=content, source=source, author=author,
+    )
+
+    domain = source
+    if url.startswith('http'):
+        try:
+            domain = url.split('/')[2].replace('www.', '')
+        except Exception:
+            pass
+
+    result = calculate_credibility_score(
+        source_domain=domain,
+        author_name=author or None,
+        claude_assessment=assessment,
+    )
+
+    result['rationale'] = assessment.get('rationale', {})
+    if assessment.get('analysis_failed'):
+        result['analysis_failed'] = True
+        result['failure_reason'] = assessment.get('failure_reason', '')
+
+    return result
+
+
+def score_article_bias(
+    url: str,
+    title: str,
+    content: str,
+    source: str,
+) -> dict:
+    """Full bias pipeline: analyse text with rubric, then aggregate via formula."""
+    assessment = analyse_article_with_claude(
+        title=title, content=content, source=source, author='',
+    )
+
+    result = calculate_bias_score(claude_assessment=assessment)
+
+    result['rationale'] = assessment.get('rationale', {})
+    if assessment.get('analysis_failed'):
+        result['analysis_failed'] = True
+        result['failure_reason'] = assessment.get('failure_reason', '')
+
+    return result
+
+
+def score_article_combined(
+    url: str,
+    title: str,
+    content: str,
+    source: str,
+    author: str = '',
+) -> dict:
+    """Combined credibility + bias scorer that runs the rubric ONCE.
+    Use this when you need both — saves an Anthropic API call vs calling the
+    two separate functions.
+
+    Returns: { 'credibility': {...}, 'bias': {...}, 'rationale': {...}, 'analysis_failed': bool }
+    """
+    assessment = analyse_article_with_claude(
+        title=title, content=content, source=source, author=author,
+    )
+
+    domain = source
+    if url.startswith('http'):
+        try:
+            domain = url.split('/')[2].replace('www.', '')
+        except Exception:
+            pass
+
+    credibility = calculate_credibility_score(
+        source_domain=domain,
+        author_name=author or None,
+        claude_assessment=assessment,
+    )
+    bias = calculate_bias_score(claude_assessment=assessment)
+
+    return {
+        'credibility': credibility,
+        'bias': bias,
+        'rationale': assessment.get('rationale', {}),
+        'analysis_failed': assessment.get('analysis_failed', False),
+    }

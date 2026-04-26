@@ -2233,8 +2233,7 @@ async def article_scores(url: str = ""):
 
     from scoring import (
         get_cached_article_score, cache_article_score,
-        score_article_credibility, score_article_bias,
-        FORMULA_VERSION,
+        score_article_combined, FORMULA_VERSION,
     )
 
     cached = get_cached_article_score(url)
@@ -2256,6 +2255,8 @@ async def article_scores(url: str = ""):
                 "label": cached.get('bias_label', 'centre'),
                 "components": cached.get('bias_components', {}),
             },
+            "rationale": cached.get('rationale', {}),
+            "analysis_failed": cached.get('analysis_failed', False),
             "formula_version": cached.get('formula_version', FORMULA_VERSION),
         })
 
@@ -2276,17 +2277,31 @@ async def article_scores(url: str = ""):
     source = article_data.get('source', '')
 
     try:
-        credibility = score_article_credibility(
-            url=url, title=title, content=content, source=source, author=''
-        )
-        bias = score_article_bias(
-            url=url, title=title, content=content, source=source
+        combined = score_article_combined(
+            url=url, title=title, content=content, source=source, author='',
         )
     except Exception as e:
         logger.error(f"[SCORE] Failed for {url}: {e}")
         return JSONResponse({
             "cached": False, "url": url, "error": "Scoring engine error.", "blocked": True,
         })
+
+    credibility = combined['credibility']
+    bias = combined['bias']
+
+    if combined.get('analysis_failed'):
+        return JSONResponse({
+            "cached": False,
+            "url": url,
+            "title": title,
+            "source": source,
+            "error": "Cronkite couldn't fully analyse this article. Try again or paste the text manually.",
+            "analysis_failed": True,
+            "blocked": False,
+        })
+
+    # Attach top-level rationale to credibility dict for cache persistence
+    credibility['rationale'] = combined.get('rationale', {})
 
     try:
         cache_article_score(
@@ -2304,6 +2319,7 @@ async def article_scores(url: str = ""):
         "source": source,
         "credibility": credibility,
         "bias": bias,
+        "rationale": combined.get('rationale', {}),
         "access_status": article_data.get('access_status', 'free'),
         "formula_version": FORMULA_VERSION,
     })
@@ -2320,8 +2336,7 @@ class ScoreTextRequest(BaseModel):
 async def score_text(req: ScoreTextRequest):
     """Run the Truth Formula on user-pasted article text."""
     from scoring import (
-        score_article_credibility, score_article_bias,
-        cache_article_score, FORMULA_VERSION,
+        score_article_combined, cache_article_score, FORMULA_VERSION,
     )
 
     if not req.text or len(req.text.strip()) < 100:
@@ -2337,16 +2352,28 @@ async def score_text(req: ScoreTextRequest):
     url = req.url.strip()
 
     try:
-        credibility = score_article_credibility(
+        combined = score_article_combined(
             url=url or 'pasted-text', title=title, content=text,
             source=source, author='',
-        )
-        bias = score_article_bias(
-            url=url or 'pasted-text', title=title, content=text, source=source,
         )
     except Exception as e:
         logger.error(f"[SCORE-TEXT] Failed: {e}")
         return JSONResponse({"error": "Scoring engine error."}, status_code=500)
+
+    credibility = combined['credibility']
+    bias = combined['bias']
+
+    if combined.get('analysis_failed'):
+        return JSONResponse({
+            "title": title,
+            "source": source,
+            "url": url,
+            "error": "Cronkite couldn't fully analyse this text. Please try again.",
+            "analysis_failed": True,
+            "input_method": "pasted_text",
+        })
+
+    credibility['rationale'] = combined.get('rationale', {})
 
     if url:
         try:
@@ -2364,6 +2391,7 @@ async def score_text(req: ScoreTextRequest):
         "url": url,
         "credibility": credibility,
         "bias": bias,
+        "rationale": combined.get('rationale', {}),
         "input_method": "pasted_text",
         "formula_version": FORMULA_VERSION,
     })
@@ -2458,7 +2486,7 @@ async def generate_for_you_suggestions(modules: list) -> list:
     """For each module, run multiple Tavily queries for real-world exemplars."""
     from datetime import date as _date, timedelta as _td
     from scoring import (
-        score_article_credibility, score_article_bias, cache_article_score,
+        score_article_combined, cache_article_score,
     )
     tavily = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
     cutoff = _date.today() - _td(days=7)
@@ -2531,14 +2559,13 @@ async def generate_for_you_suggestions(modules: list) -> list:
                     r = await client.get(cand['url'])
                     html = r.text
                 content_for_scoring = _extract_with_trafilatura(html, cand['url']) or ''
-                credibility = score_article_credibility(
+                combined = score_article_combined(
                     url=cand['url'], title=cand['title'], content=content_for_scoring,
                     source=domain, author='',
                 )
-                bias_score = score_article_bias(
-                    url=cand['url'], title=cand['title'], content=content_for_scoring,
-                    source=domain,
-                )
+                credibility = combined['credibility']
+                credibility['rationale'] = combined.get('rationale', {})
+                bias_score = combined['bias']
                 cache_article_score(
                     url=cand['url'], title=cand['title'], source=domain,
                     credibility=credibility, bias=bias_score,
