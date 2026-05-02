@@ -49,6 +49,322 @@ function getRandomError() {
   return CRONKITE_ERRORS[Math.floor(Math.random() * CRONKITE_ERRORS.length)]
 }
 
+// ── Helpers for ScorePanel ────────────────────────────────────────────────
+
+function formatComponentName(key) {
+  return key.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())
+}
+
+function renderParagraphWithHighlights(text, phrases) {
+  if (!phrases || phrases.length === 0) return text
+
+  const escaped = phrases.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const pattern = new RegExp(`(${escaped.join('|')})`, 'gi')
+  const parts = text.split(pattern)
+
+  return parts.map((part, i) => {
+    const isMatch = phrases.some(p => p.toLowerCase() === part.toLowerCase())
+    if (isMatch) {
+      return (
+        <mark key={i} style={{
+          background: 'rgba(196,30,58,0.18)',
+          color: '#1A1714',
+          padding: '1px 3px',
+          borderRadius: '3px',
+          fontWeight: 500,
+        }}>
+          {part}
+        </mark>
+      )
+    }
+    return part
+  })
+}
+
+// ── ComponentBar ─────────────────────────────────────────────────────────
+
+function ComponentBar({ label, value, max = 100, bidirectional = false }) {
+  const v = typeof value === 'number' ? value : 0
+  const barColour =
+    bidirectional
+      ? (v < 0 ? '#3D6BB0' : v > 0 ? '#B0432D' : '#7A746E')
+      : (v >= 75 ? '#3F8B5F' : v >= 55 ? '#9C8838' : '#B0432D')
+
+  return (
+    <div style={{ marginBottom: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#C9C0B5', marginBottom: '3px' }}>
+        <span>{label}</span>
+        <span style={{ color: '#9E9488' }}>{bidirectional && v > 0 ? '+' : ''}{v}</span>
+      </div>
+      <div style={{ position: 'relative', height: '4px', background: 'rgba(247,243,236,0.08)', borderRadius: '2px' }}>
+        {bidirectional ? (
+          <div style={{
+            position: 'absolute',
+            left: v < 0 ? `${50 + (v / 2)}%` : '50%',
+            width: `${Math.abs(v) / 2}%`,
+            height: '100%',
+            background: barColour,
+            borderRadius: '2px',
+          }} />
+        ) : (
+          <div style={{
+            width: `${(v / max) * 100}%`,
+            height: '100%',
+            background: barColour,
+            borderRadius: '2px',
+          }} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── ScorePanel ────────────────────────────────────────────────────────────
+
+function ScorePanel({ scores, loading, error, expanded, onToggleExpanded, showHighlights, onToggleHighlights }) {
+  if (loading) {
+    return (
+      <div style={{
+        background: '#FAF7F0',
+        border: '1px solid rgba(26,23,20,0.08)',
+        borderRadius: '10px',
+        padding: '16px 20px',
+        marginBottom: '24px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '14px',
+      }}>
+        <div style={{
+          width: '14px', height: '14px', borderRadius: '50%',
+          border: '2px solid rgba(26,23,20,0.15)',
+          borderTopColor: 'rgb(196,30,58)',
+          animation: 'spin 0.9s linear infinite',
+          flexShrink: 0,
+        }} />
+        <span style={{ fontSize: '12px', color: '#7A746E' }}>
+          Cronkite is scoring this article…
+        </span>
+        <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+      </div>
+    )
+  }
+
+  if (error || !scores || scores.analysis_failed) {
+    const msg = scores?.analysis_failed
+      ? "Cronkite couldn't fully analyse this article. Try opening it on the original site — Cronkite can still help you think about it."
+      : "Scoring unavailable for this article."
+    return (
+      <div style={{
+        background: '#FAF7F0',
+        border: '1px solid rgba(26,23,20,0.08)',
+        borderRadius: '10px',
+        padding: '14px 18px',
+        marginBottom: '24px',
+        fontSize: '12px',
+        color: '#7A746E',
+      }}>
+        {msg}
+      </div>
+    )
+  }
+
+  const credScore = scores.credibility?.score ?? 50
+  const biasScore = scores.bias?.score ?? 0
+  const biasLabel = scores.bias?.label ?? 'centre'
+  const credBrief = scores.rationale?.credibility_brief ?? ''
+  const biasBrief = scores.rationale?.bias_brief ?? ''
+  const keyPhrases = scores.rationale?.key_phrases ?? []
+
+  const biasColour =
+    biasLabel.includes('left') ? '#3D6BB0' :
+    biasLabel.includes('right') ? '#B0432D' :
+    '#7A746E'
+
+  const credColour =
+    credScore >= 75 ? '#3F8B5F' :
+    credScore >= 55 ? '#9C8838' :
+    '#B0432D'
+
+  return (
+    <div style={{
+      background: '#1A1714',
+      borderRadius: '10px',
+      marginBottom: '24px',
+      overflow: 'hidden',
+    }}>
+      {/* Compact view */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '20px',
+        padding: '18px 22px',
+      }}>
+        {/* Credibility */}
+        <div>
+          <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.7px', color: '#9E9488', marginBottom: '6px' }}>
+            Credibility
+          </div>
+          <div style={{
+            fontFamily: "'Playfair Display', serif",
+            fontSize: '36px',
+            fontWeight: 700,
+            color: credColour,
+            lineHeight: 1,
+            marginBottom: '4px',
+          }}>
+            {credScore}<span style={{ fontSize: '14px', color: '#7A746E', fontWeight: 400 }}>/100</span>
+          </div>
+          <div style={{ fontSize: '12px', color: '#C9C0B5', lineHeight: 1.5 }}>
+            {credBrief}
+          </div>
+        </div>
+
+        {/* Bias */}
+        <div>
+          <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.7px', color: '#9E9488', marginBottom: '6px' }}>
+            Bias
+          </div>
+          <div style={{
+            fontFamily: "'Playfair Display', serif",
+            fontSize: '24px',
+            fontWeight: 700,
+            color: biasColour,
+            lineHeight: 1.1,
+            marginBottom: '4px',
+            textTransform: 'capitalize',
+          }}>
+            {biasLabel.replace('-', ' ')}
+            <span style={{ fontSize: '14px', color: '#7A746E', fontWeight: 400, marginLeft: '8px' }}>
+              ({biasScore > 0 ? '+' : ''}{biasScore})
+            </span>
+          </div>
+          <div style={{ fontSize: '12px', color: '#C9C0B5', lineHeight: 1.5 }}>
+            {biasBrief}
+          </div>
+        </div>
+      </div>
+
+      {/* Action row */}
+      <div style={{
+        borderTop: '1px solid rgba(247,243,236,0.08)',
+        padding: '10px 22px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '16px',
+      }}>
+        {keyPhrases.length > 0 && (
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '12px',
+            color: '#C9C0B5',
+            cursor: 'pointer',
+          }}>
+            <input
+              type="checkbox"
+              checked={showHighlights}
+              onChange={onToggleHighlights}
+              style={{ accentColor: 'rgb(196,30,58)' }}
+            />
+            Show me what Cronkite noticed
+          </label>
+        )}
+        <button
+          onClick={onToggleExpanded}
+          style={{
+            marginLeft: 'auto',
+            background: 'none',
+            border: 'none',
+            color: '#9E9488',
+            fontSize: '12px',
+            cursor: 'pointer',
+            fontFamily: "'DM Sans', sans-serif",
+          }}
+        >
+          {expanded ? 'Hide full analysis ↑' : 'See full analysis ↓'}
+        </button>
+      </div>
+
+      {/* Expanded view */}
+      {expanded && (
+        <div style={{
+          borderTop: '1px solid rgba(247,243,236,0.08)',
+          padding: '20px 22px',
+          background: '#13110F',
+        }}>
+          {/* Credibility components */}
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.7px', color: '#9E9488', marginBottom: '10px' }}>
+              Credibility breakdown
+            </div>
+            {Object.entries(scores.credibility?.components || {}).map(([key, value]) => (
+              <ComponentBar key={key} label={formatComponentName(key)} value={value} max={100} />
+            ))}
+          </div>
+
+          {/* Bias components */}
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.7px', color: '#9E9488', marginBottom: '10px' }}>
+              Bias breakdown
+            </div>
+            {Object.entries(scores.bias?.components || {}).map(([key, value]) => (
+              <ComponentBar key={key} label={formatComponentName(key)} value={value} bidirectional />
+            ))}
+          </div>
+
+          {/* Source trust */}
+          {scores.credibility?.source_trust !== undefined && (
+            <div style={{ fontSize: '12px', color: '#C9C0B5', marginBottom: '8px' }}>
+              <span style={{ color: '#9E9488' }}>Source trust:</span> {scores.credibility.source_trust}/100
+              {scores.source && <span style={{ color: '#9E9488' }}> ({scores.source})</span>}
+            </div>
+          )}
+
+          {/* COI flags */}
+          {scores.credibility?.conflict_of_interest_flags?.length > 0 && (
+            <div style={{ fontSize: '12px', color: '#E5945C', marginBottom: '8px' }}>
+              ⚑ Conflict of interest: {scores.credibility.conflict_of_interest_flags.join(', ')}
+            </div>
+          )}
+
+          {/* Key phrases */}
+          {keyPhrases.length > 0 && (
+            <div style={{ marginTop: '12px' }}>
+              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.7px', color: '#9E9488', marginBottom: '8px' }}>
+                Phrases Cronkite flagged
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {keyPhrases.map((p, i) => (
+                  <span key={i} style={{
+                    background: 'rgba(247,243,236,0.08)',
+                    color: '#F7F3EC',
+                    padding: '4px 10px',
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    fontStyle: 'italic',
+                  }}>
+                    "{p}"
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Methodology footer */}
+          <div style={{ marginTop: '16px', fontSize: '11px', color: '#7A746E', lineHeight: 1.5 }}>
+            Scores from Cronkite's Truth Formula v{scores.formula_version || '1.0'}.
+            Credibility weights: source 20%, claim verifiability 25%, language neutrality 20%, authorship 15%, cross-source consensus 20%.
+            Bias weights: lexical 30%, source selection 25%, narrative framing 25%, omission 20%.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main page component ───────────────────────────────────────────────────
+
 export default function ArticleReader() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -58,6 +374,12 @@ export default function ArticleReader() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [chatReady, setChatReady] = useState(false)
+
+  const [scores, setScores] = useState(null)
+  const [scoresLoading, setScoresLoading] = useState(true)
+  const [scoresError, setScoresError] = useState(null)
+  const [scoresExpanded, setScoresExpanded] = useState(false)
+  const [showHighlights, setShowHighlights] = useState(false)
 
   const [welcomeMessage] = useState(
     WELCOME_MESSAGES[Math.floor(Math.random() * WELCOME_MESSAGES.length)]
@@ -75,6 +397,7 @@ export default function ArticleReader() {
     try { return new URL(url).hostname.replace('www.', '') } catch { return '' }
   })()
 
+  // Article fetch
   useEffect(() => {
     if (!url) { setLoading(false); setError('No URL provided'); return }
     fetch(`/api/read-article?url=${encodeURIComponent(url)}`)
@@ -88,6 +411,31 @@ export default function ArticleReader() {
       .catch(() => { setError('Failed to load article'); setLoading(false); setChatReady(true) })
   }, [url])
 
+  // Scores fetch — independent of article loading
+  useEffect(() => {
+    if (!url) {
+      setScoresLoading(false)
+      return
+    }
+    fetch(`/api/article-scores?url=${encodeURIComponent(url)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error || data.blocked) {
+          setScoresError(data.error || 'Scoring unavailable')
+        } else if (data.analysis_failed) {
+          setScores({ analysis_failed: true })
+        } else {
+          setScores(data)
+        }
+        setScoresLoading(false)
+      })
+      .catch(() => {
+        setScoresError('Could not load scores')
+        setScoresLoading(false)
+      })
+  }, [url])
+
+  // Loading phrase rotation
   useEffect(() => {
     if (!loading) return
     let i = 0
@@ -198,19 +546,41 @@ export default function ArticleReader() {
             </div>
           )}
 
-          {article && article.blocked && (
-            <div style={{ maxWidth: '600px', margin: '60px auto', textAlign: 'center' }}>
-              <p style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', color: '#1A1714', marginBottom: '8px' }}>Article not available in reader</p>
-              <p style={{ fontSize: '13px', color: '#7A746E', marginBottom: '6px', lineHeight: 1.6 }}>
-                This article requires JavaScript or a subscription and can't be displayed here.
-              </p>
-              <p style={{ fontSize: '12px', color: '#B0A89E', marginBottom: '20px' }}>You can still read it on the original site and chat about it here.</p>
-              <a href={url} target="_blank" rel="noopener noreferrer"
-                style={{ display: 'inline-block', background: 'rgb(196,30,58)', color: '#fff', borderRadius: '7px', padding: '8px 18px', fontSize: '13px', fontWeight: 600, textDecoration: 'none' }}>
-                Open original article →
-              </a>
-            </div>
-          )}
+          {article && article.blocked && (() => {
+            const status = article.access_status || 'blocked'
+            const platform = article.platform
+
+            let heading, message
+
+            if (status === 'requires_app') {
+              heading = `${platform || 'This platform'} content`
+              message = `Cronkite can analyse ${platform || 'this'} content if you paste the post text below. The Cronkite mobile app (coming soon) will let you share posts directly.`
+            } else if (status === 'paywalled') {
+              heading = "This article is behind a paywall"
+              message = "Sign in via your school's subscription to read it, then paste the article text below. Cronkite analyses pasted text the same way it analyses scraped articles."
+            } else {
+              heading = "We couldn't read this article"
+              message = "If it's behind a paywall, sign in via your school's subscription and paste the article text below. Otherwise, you can read it on the original site."
+            }
+
+            return (
+              <div style={{ maxWidth: '600px', margin: '60px auto', textAlign: 'center' }}>
+                <p style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: '#1A1714', marginBottom: '12px' }}>
+                  {heading}
+                </p>
+                <p style={{ fontSize: '14px', color: '#7A746E', marginBottom: '24px', lineHeight: 1.6 }}>
+                  {message}
+                </p>
+                <a href={url} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'inline-block', background: 'rgb(196,30,58)', color: '#fff', borderRadius: '7px', padding: '10px 22px', fontSize: '13px', fontWeight: 600, textDecoration: 'none' }}>
+                  Open original article ↗
+                </a>
+                <div style={{ marginTop: '12px', fontSize: '12px', color: '#B0A89E' }}>
+                  Paste-text analysis is coming in the next update.
+                </div>
+              </div>
+            )
+          })()}
 
           {article && !article.blocked && (() => {
             const articleParts = article.content?.split('--- READER COMMENTS ---') || []
@@ -227,11 +597,29 @@ export default function ArticleReader() {
                 <div style={{ fontSize: '12px', color: '#B0A89E', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid rgba(26,23,20,0.06)' }}>
                   Assigned by teacher
                 </div>
+
+                <ScorePanel
+                  scores={scores}
+                  loading={scoresLoading}
+                  error={scoresError}
+                  expanded={scoresExpanded}
+                  onToggleExpanded={() => setScoresExpanded(v => !v)}
+                  showHighlights={showHighlights}
+                  onToggleHighlights={() => setShowHighlights(v => !v)}
+                />
+
                 <div style={{ fontSize: '15px', lineHeight: 1.8, color: '#1A1714' }}>
-                  {mainContent.split('\n').map((para, i) => (
-                    para.trim() ? <p key={i} style={{ marginBottom: '16px' }}>{para}</p> : null
-                  ))}
+                  {mainContent.split('\n').map((para, i) => {
+                    if (!para.trim()) return null
+                    const keyPhrases = (showHighlights && scores?.rationale?.key_phrases) || []
+                    return (
+                      <p key={i} style={{ marginBottom: '16px' }}>
+                        {renderParagraphWithHighlights(para, keyPhrases)}
+                      </p>
+                    )
+                  })}
                 </div>
+
                 {commentsContent && (
                   <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '2px solid rgba(26,23,20,0.08)' }}>
                     <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.7px', color: '#B0A89E', marginBottom: '14px' }}>
@@ -249,9 +637,8 @@ export default function ArticleReader() {
           })()}
         </div>
 
-        {/* Chat sidebar */}
+        {/* Chat sidebar — unchanged */}
         <div style={{ background: '#1A1714', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Header */}
           <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(247,243,236,0.08)', flexShrink: 0 }}>
             <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', fontWeight: 700, color: '#F7F3EC' }}>
               Cronkite<span style={{ color: 'rgb(196,30,58)' }}>.</span>
@@ -259,7 +646,6 @@ export default function ArticleReader() {
             <div style={{ fontSize: '11px', color: '#9E9488', marginTop: '2px' }}>Ask about this article</div>
           </div>
 
-          {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {chatReady && !article?.blocked && article?.content && (
               <div style={{
@@ -318,7 +704,6 @@ export default function ArticleReader() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
           <div style={{ padding: '10px', borderTop: '1px solid rgba(247,243,236,0.08)', display: 'flex', gap: '6px', flexShrink: 0 }}>
             <input
               value={input}
