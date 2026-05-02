@@ -284,6 +284,28 @@ EXAMPLE D — BBC News article on a court ruling:
   lexical_bias: 0, source_selection: -5, narrative_framing: 0, omission: 5
 
 ═══════════════════════════════════════════════════════════════════
+KEY_PHRASES — STRICT REQUIREMENTS
+═══════════════════════════════════════════════════════════════════
+
+The key_phrases array MUST contain EXACT VERBATIM substrings of the article body.
+
+DO:
+  - Copy the text exactly as it appears in the article, character-for-character
+  - Include any internal punctuation (commas, dashes, quote marks) the article uses
+  - Choose phrases between 4 and 15 words long
+  - Pick phrases that DROVE your scoring decisions, not generic descriptions
+
+DO NOT:
+  - Paraphrase, summarise, or rewrite phrases — they must be copy-paste from the article
+  - Combine non-adjacent fragments into one phrase
+  - Wrap phrases in quotation marks (the article's own quotation marks should still appear if present, but do not add outer quotes)
+  - Strip the article's own punctuation from inside the phrase
+
+If the article doesn't contain a phrase that fits, return fewer phrases — even an empty array is acceptable. NEVER fabricate a phrase. NEVER make up wording the article doesn't actually contain.
+
+The phrases will be used to highlight text in the article body using exact substring matching. Paraphrased phrases will fail to highlight, breaking the student's experience.
+
+═══════════════════════════════════════════════════════════════════
 OUTPUT FORMAT
 ═══════════════════════════════════════════════════════════════════
 
@@ -301,7 +323,7 @@ Return ONLY a JSON object. No markdown fences. No preamble. No commentary.
   "rationale": {
     "credibility_brief": "<one sentence, max 25 words, explaining the credibility assessment>",
     "bias_brief": "<one sentence, max 25 words, explaining the bias direction>",
-    "key_phrases": ["<up to 3 short verbatim phrases from the article that drove your scoring>"]
+    "key_phrases": ["<verbatim substring 1>", "<verbatim substring 2>", "<verbatim substring 3>"]
   }
 }"""
 

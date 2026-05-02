@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import ScorePanel from '../ScorePanel';
 
 interface PersuasionTechnique {
   technique: string;
@@ -37,21 +38,45 @@ interface SourceProfile {
   credibility_impact: string;
 }
 
+// Canonical score shapes from scoring.py / Truth Formula
+interface CanonicalCredibility {
+  score: number;
+  components?: Record<string, number>;
+  source_trust?: number;
+  author_trust?: number | null;
+  conflict_of_interest_flags?: string[];
+  formula_version?: string;
+}
+
+interface CanonicalBias {
+  score: number;
+  label: string;
+  components?: Record<string, number>;
+  formula_version?: string;
+}
+
+interface CanonicalRationale {
+  credibility_brief?: string;
+  bias_brief?: string;
+  key_phrases?: string[];
+}
+
 export interface AnalysisData {
   title?: string;
   source?: string;
   author?: string;
   summary?: string;
   content_type?: string;
-  credibility_score?: number;
-  overall_credibility_score?: number;
-  credibility_reasoning?: string;
+  // Canonical score fields (post-2.6)
+  credibility?: CanonicalCredibility;
+  bias?: CanonicalBias;
+  rationale?: CanonicalRationale;
+  formula_version?: string;
+  analysis_failed?: boolean;
+  // Rich Opus analysis fields
   goal?: string;
   technique?: string;
   conclusion?: string;
-  bias_direction?: number;
-  bias_intensity?: number;
-  bias_reasoning?: string;
   creator_profile?: CreatorProfile;
   source_profile?: SourceProfile;
   persuasion_techniques?: (PersuasionTechnique | string)[];
@@ -97,45 +122,6 @@ function getVerdictConfig(claim: KeyClaim) {
   return VERDICT_CONFIG.unverified;
 }
 
-function CredibilityBar({ score }: { score: number }) {
-  const barColor = score >= 75 ? 'bg-emerald-500' : score >= 50 ? 'bg-amber-500' : 'bg-red-500';
-  const textColor = score >= 75 ? 'text-emerald-700' : score >= 50 ? 'text-amber-700' : 'text-red-700';
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Credibility Score</span>
-        <span className={`text-sm font-bold ${textColor}`}>{score}%</span>
-      </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
-        <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${score}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function BiasBar({ direction }: { direction: number }) {
-  const pct = ((direction + 100) / 200) * 100;
-  const label = direction < -30 ? 'Left-leaning' : direction > 30 ? 'Right-leaning' : 'Centre';
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Political Bias</span>
-        <span className="text-xs font-medium">{label}</span>
-      </div>
-      <div className="relative h-2 bg-gradient-to-r from-blue-400 via-muted to-red-400 rounded-full">
-        <div
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-foreground rounded-full border-2 border-background shadow"
-          style={{ left: `calc(${pct}% - 6px)` }}
-        />
-      </div>
-      <div className="flex justify-between text-[10px] text-muted-foreground">
-        <span>Left</span>
-        <span>Right</span>
-      </div>
-    </div>
-  );
-}
-
 function ExpandablePanel({ title, children }: { title: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
@@ -164,23 +150,21 @@ function ProfileField({ label, value }: { label: string; value: string }) {
 }
 
 export function ArticleAnalysisCard({ analysis }: { analysis: AnalysisData }) {
-  const score = analysis.credibility_score ?? analysis.overall_credibility_score ?? 0;
-  const bias = analysis.bias_direction ?? 0;
+  const [scorePanelExpanded, setScorePanelExpanded] = useState(true);
 
   return (
     <div className="space-y-5 text-sm">
 
-      {/* Credibility & Bias — top */}
-      <div className="space-y-3">
-        <CredibilityBar score={score} />
-        {analysis.credibility_reasoning && (
-          <p className="text-[10px] text-muted-foreground leading-relaxed italic">{analysis.credibility_reasoning}</p>
-        )}
-        <BiasBar direction={bias} />
-        {analysis.bias_reasoning && (
-          <p className="text-[10px] text-muted-foreground leading-relaxed italic">{analysis.bias_reasoning}</p>
-        )}
-      </div>
+      {/* ── Canonical ScorePanel (Truth Formula scores) ── */}
+      <ScorePanel
+        scores={analysis}
+        loading={false}
+        error={null}
+        expanded={scorePanelExpanded}
+        onToggleExpanded={() => setScorePanelExpanded(v => !v)}
+        showHighlights={false}
+        onToggleHighlights={null}
+      />
 
       {/* Editorial Summary */}
       {analysis.report_summary && (
@@ -202,19 +186,19 @@ export function ArticleAnalysisCard({ analysis }: { analysis: AnalysisData }) {
           {analysis.goal && (
             <div className="bg-muted/40 rounded px-3 py-2">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Goal</p>
-              <p className="text-xs leading-relaxed">{analysis.goal}</p>
+              <p className="text-xs leading-relaxed">{analysis.goal as string}</p>
             </div>
           )}
           {analysis.technique && (
             <div className="bg-muted/40 rounded px-3 py-2">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Technique</p>
-              <p className="text-xs leading-relaxed">{analysis.technique}</p>
+              <p className="text-xs leading-relaxed">{analysis.technique as string}</p>
             </div>
           )}
           {analysis.conclusion && (
             <div className="bg-muted/40 rounded px-3 py-2">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Conclusion</p>
-              <p className="text-xs leading-relaxed">{analysis.conclusion}</p>
+              <p className="text-xs leading-relaxed">{analysis.conclusion as string}</p>
             </div>
           )}
         </div>

@@ -5,7 +5,6 @@ from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel
-from groq import Groq
 from tavily import TavilyClient
 import json, os, re, httpx, logging
 
@@ -15,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 from typing import Optional
 from urllib.parse import urlparse
-from scoring import calculate_credibility_score, calculate_bias_score, get_entity_trust, auto_populate_entity
+from scoring import get_entity_trust, auto_populate_entity
 from monitoring_agent import run_monitoring_cycle
 
 app = FastAPI()
@@ -97,32 +96,6 @@ def get_current_user(authorization: str = Header(None)) -> dict:
 
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
-
-class AnalyseRequest(BaseModel):
-    text: str = ""
-    url: str = ""
-
-class ClaimResult(BaseModel):
-    claim: str
-    verdict: str
-    score: int
-    explanation: str
-    sources: list[str] = []
-    nuance: str = ""
-
-class LanguageFlag(BaseModel):
-    phrase: str
-    issue: str
-
-class AnalysisResult(BaseModel):
-    overall_score: int
-    verdict: str
-    summary: str
-    claims: list[ClaimResult]
-    bias_score: int = 50
-    bias_label: str = "Centre"
-    bias_summary: str = ""
-    language_flags: list[LanguageFlag] = []
 
 class ModuleCreate(BaseModel):
     title: str
@@ -562,23 +535,6 @@ async def fetch_article_text(url: str) -> str:
     raise HTTPException(status_code=400, detail="Could not extract text from URL. Try pasting the text directly.")
 
 
-# ── Tavily search ─────────────────────────────────────────────────────────────
-
-def search_claim(tavily: TavilyClient, claim: str) -> list[dict]:
-    results = []
-    try:
-        response = tavily.search(query=claim, search_depth="basic", max_results=5, include_answer=True)
-        if response.get("answer"):
-            results.append({"text": response["answer"], "source": "Tavily Web Search"})
-        for r in response.get("results", []):
-            if r.get("content") and len(r["content"]) > 50:
-                domain = r.get("url", "").split("/")[2] if r.get("url") else "Web"
-                results.append({"text": r["content"][:400], "source": domain})
-    except Exception:
-        pass
-    return results[:5]
-
-
 # ── React SPA ─────────────────────────────────────────────────────────────────
 _DIST = BASE_DIR / "frontend" / "dist"
 
@@ -613,140 +569,6 @@ if os.path.exists(_DIST / "assets"):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-# ── Analyse endpoint ──────────────────────────────────────────────────────────
-
-@app.post("/analyse")
-async def analyse(req: AnalyseRequest):
-    article_text = req.text
-    article_url = req.url
-
-    if not article_text and article_url:
-        article_text = await fetch_article_text(article_url)
-
-    if not article_text or len(article_text) < 100:
-        raise HTTPException(status_code=400, detail="Too short. Please provide more text or a valid article URL.")
-
-    try:
-        groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-        tavily_client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY"))
-
-        # Step 1: Extract claims
-        extract_response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": (
-                "Extract 4-6 important verifiable factual claims from this article. "
-                "Ignore opinions. Return ONLY a JSON array of short claim strings.\n"
-                f"ARTICLE:\n{article_text[:6000]}\n"
-                'Format: ["Claim 1", "Claim 2"]'
-            )}],
-            temperature=0.1
-        )
-        raw_claims = extract_response.choices[0].message.content.strip()
-        start = raw_claims.find("[")
-        end = raw_claims.rfind("]") + 1
-        claims_list = json.loads(raw_claims[start:end])
-
-        # Step 2: Search internet for each claim
-        search_context = ""
-        for claim in claims_list:
-            results = search_claim(tavily_client, claim)
-            search_context += f"\nCLAIM: {claim}\n"
-            if results:
-                search_context += "WEB EVIDENCE:\n"
-                for r in results:
-                    search_context += f"  [{r['source']}]: {r['text']}\n"
-            else:
-                search_context += "WEB EVIDENCE: None found\n"
-
-        # Step 3: Full analysis including language flagging
-        judge_response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": (
-                "You are an expert fact-checker, media bias analyst, and linguist.\n\n"
-
-                "FACT-CHECKING RULES:\n"
-                "- Give a CONFIDENT verdict for every claim using web evidence AND your knowledge\n"
-                "- Only use 'Unverified' if evidence is truly absent\n"
-                "- Cite actual source domains. Aim for 2-3 sources per claim\n\n"
-
-                "BIAS ANALYSIS RULES:\n"
-                "- Assess the article's overall political/ideological bias\n"
-                "- bias_score: 0=Far Left, 25=Left, 50=Centre, 75=Right, 100=Far Right\n"
-                "- bias_label: Far Left | Left-Leaning | Centre-Left | Centre | Centre-Right | Right-Leaning | Far Right\n"
-                "- Look for: loaded language, selective sourcing, framing, omissions, emotional tone\n\n"
-
-                "LANGUAGE FLAGGING RULES — this is critical:\n"
-                "Scan the article for biased or loaded language patterns including:\n"
-                "1. IDENTITY + CRIME LINKING: Phrases that connect nationality, ethnicity, religion or immigration status with criminal acts\n"
-                "   Examples: 'Afghan knifeman', 'Muslim attacker', 'illegal immigrant criminal', 'Romanian gang'\n"
-                "   Why it matters: Implies a group's identity caused or is linked to their crime\n"
-                "2. DEHUMANISING LANGUAGE: Words that reduce people to objects or animals\n"
-                "   Examples: 'swarms of migrants', 'flooding our borders', 'cockroaches'\n"
-                "3. LOADED ADJECTIVES: Emotionally charged words that imply judgement beyond the facts\n"
-                "   Examples: 'thugs', 'savages', 'radical', 'extremist' used without evidence\n"
-                "4. SELECTIVE IDENTITY LABELLING: Mentioning someone's nationality/religion only when they commit crimes, not in positive stories\n"
-                "5. EUPHEMISMS FOR BIAS: Language that softens or normalises discriminatory views\n"
-                "6. GENERALISATION FROM INDIVIDUAL: Using one person's actions to imply group behaviour\n\n"
-                "For each flagged phrase, explain clearly why it is problematic.\n\n"
-
-                "For each claim also assess:\n"
-                "- False conclusions, overgeneralisations, assumptions, missing context\n\n"
-
-                f"ARTICLE URL: {article_url}\n"
-                f"ARTICLE TEXT:\n{article_text[:4000]}\n"
-                f"{search_context}\n\n"
-
-                "Return ONLY valid JSON:\n"
-                '{"overall_score": <0-100>, "verdict": "<verdict>", "summary": "<2-3 sentences>", '
-                '"bias_score": <0-100>, '
-                '"bias_label": "<label>", '
-                '"bias_summary": "<2-3 sentences explaining bias>", '
-                '"language_flags": [{"phrase": "<exact phrase from article>", "issue": "<clear explanation of why this is problematic>"}], '
-                '"claims": [{'
-                '"claim": "<claim>", '
-                '"verdict": "<Verified|Likely True|Mostly True|Misleading|False Conclusion|Overgeneralisation|Missing Context|Contradicted|Likely False|False|Unverified>", '
-                '"score": <0-100>, '
-                '"explanation": "<2-3 sentences>", '
-                '"nuance": "<issues with conclusions/assumptions/context — empty string if none>", '
-                '"sources": ["<source domain>"]}]}'
-            )}],
-            temperature=0.2
-        )
-
-        raw = judge_response.choices[0].message.content.strip()
-        if "```" in raw:
-            parts = raw.split("```")
-            for part in parts:
-                p = part.strip()
-                if p.startswith("json"):
-                    p = p[4:].strip()
-                if p.startswith("{"):
-                    raw = p
-                    break
-
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start != -1 and end > start:
-            raw = raw[start:end]
-
-        data = json.loads(raw)
-        claims = [ClaimResult(**c) for c in data.get("claims", [])]
-        language_flags = [LanguageFlag(**f) for f in data.get("language_flags", [])]
-
-        return AnalysisResult(
-            overall_score=data.get("overall_score", 50),
-            verdict=data.get("verdict", "Unknown"),
-            summary=data.get("summary", ""),
-            bias_score=data.get("bias_score", 50),
-            bias_label=data.get("bias_label", "Centre"),
-            bias_summary=data.get("bias_summary", ""),
-            language_flags=language_flags,
-            claims=claims,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── YouTube transcript endpoint ───────────────────────────────────────────────
@@ -1017,33 +839,78 @@ IMPORTANT: Your entire response must be ONLY the JSON object above. No preamble,
         raise ValueError(f"No valid JSON in response. Got: {text[:500]}")
 
     data = json.loads(json_match.group())
-    data["overall_credibility_score"] = data.get("credibility_score", 50)
+
     # For YouTube, enforce the verified channel name as source — never trust Claude's inference
     if yt_channel:
         data["source"] = yt_channel
 
-    # ── Cronkite Truth Formula scoring ──────────────────────────────────
-    source_domain = urlparse(url).netloc.replace('www.', '')
+    # ── CANONICAL SCORING via score_article_combined ──────────────────────────
+    # Discard Opus's internal score outputs. They were produced by a different prompt
+    # with different calibration and aren't part of Cronkite's Truth Formula. The
+    # canonical pipeline (analyse_article_with_claude → calculate_*_score) is the
+    # trademarked methodology used everywhere in the product.
+    from scoring import score_article_combined, cache_article_score
 
-    credibility_result = calculate_credibility_score(
-        source_domain=source_domain,
-        author_name=data.get('author'),
-        claude_assessment={
-            'claim_verifiability': data.get('claim_verifiability_score', 50),
-            'language_neutrality': data.get('language_neutrality_score', 50),
-            'authorship_transparency': data.get('authorship_transparency_score', 50),
-        }
+    # Build article text for the rubric. Prefer the actual article body if Opus
+    # captured it, otherwise compose from the rich summary fields Opus produces.
+    if youtube_context:
+        article_text_for_scoring = (
+            f"Title: {data.get('title', '')}\n\n"
+            f"Channel: {data.get('source', '')}\n\n"
+            f"Summary: {data.get('summary', '')}\n\n"
+            f"Report summary: {data.get('report_summary', '')}\n\n"
+            f"Narrative framing: {data.get('narrative_framing', '')}"
+        )
+    else:
+        article_text_for_scoring = (
+            f"Title: {data.get('title', '')}\n\n"
+            f"Summary: {data.get('summary', '')}\n\n"
+            f"Report summary: {data.get('report_summary', '')}\n\n"
+            f"Narrative framing: {data.get('narrative_framing', '')}\n\n"
+            f"Goal: {data.get('goal', '')}\n\n"
+            f"Technique: {data.get('technique', '')}"
+        )
+
+    combined = score_article_combined(
+        url=url,
+        title=data.get('title', ''),
+        content=article_text_for_scoring,
+        source=data.get('source', ''),
+        author=data.get('author', ''),
     )
 
-    bias_result = calculate_bias_score({
-        'lexical_bias': data.get('lexical_bias_score', 0),
-        'source_selection': data.get('source_selection_score', 0),
-        'narrative_framing': data.get('narrative_framing_score', 0),
-        'omission': data.get('omission_score', 0),
-    })
+    # ── Strip OLD score fields from response ──────────────────────────────────
+    # These were Opus's internal scoring outputs. They must not coexist with the
+    # canonical fields, otherwise downstream consumers may read stale numbers.
+    OLD_SCORE_FIELDS = [
+        'credibility_score', 'bias_direction', 'bias_intensity',
+        'claim_verifiability_score', 'language_neutrality_score', 'authorship_transparency_score',
+        'lexical_bias_score', 'source_selection_score', 'narrative_framing_score', 'omission_score',
+        'overall_credibility_score', 'cronkite_credibility', 'cronkite_bias',
+        'credibility_reasoning', 'bias_reasoning',
+    ]
+    for field in OLD_SCORE_FIELDS:
+        data.pop(field, None)
 
-    data['cronkite_credibility'] = credibility_result
-    data['cronkite_bias'] = bias_result
+    # Attach canonical scores
+    data['credibility'] = combined['credibility']
+    data['bias'] = combined['bias']
+    data['rationale'] = combined.get('rationale', {})
+    data['analysis_failed'] = combined.get('analysis_failed', False)
+    data['formula_version'] = combined['credibility'].get('formula_version', '1.0')
+
+    # Cache so /api/article-scores returns the same scores
+    try:
+        cache_article_score(
+            url=url,
+            title=data.get('title', ''),
+            source=data.get('source', ''),
+            credibility=combined['credibility'],
+            bias=combined['bias'],
+            summary=data.get('summary', ''),
+        )
+    except Exception as e:
+        logger.warning(f"[ANALYSE] Cache write failed: {e}")
 
     return data
 
@@ -1461,6 +1328,7 @@ def fetch_bias_stories() -> list:
                         text += item.text
 
     # Parse JSON from response
+    from scoring import score_article_combined
     stories = []
     try:
         start = text.find("[")
@@ -1468,12 +1336,38 @@ def fetch_bias_stories() -> list:
         if start >= 0 and end > start:
             raw_items = json.loads(text[start:end])
             for item in raw_items[:5]:
+                source_url = item.get('url', '')
+                title = item.get('headline', '')
+                explanation = item.get('explanation', '')
+                scoring_text = f"Headline: {title}\n\nContext: {explanation}"
+
+                try:
+                    domain = (
+                        source_url.split('/')[2].replace('www.', '')
+                        if source_url.startswith('http')
+                        else item.get('source', '')
+                    )
+                    combined = score_article_combined(
+                        url=source_url,
+                        title=title,
+                        content=scoring_text,
+                        source=domain,
+                        author='',
+                    )
+                    canonical_bias = combined['bias']
+                    canonical_credibility = combined['credibility']
+                except Exception as e:
+                    logger.warning(f"[BIAS] Canonical scoring failed for '{title}': {e}")
+                    canonical_bias = {'score': 0, 'label': 'centre', 'components': {}}
+                    canonical_credibility = {'score': 50, 'components': {}}
+
                 stories.append({
-                    'title':           item.get('headline', ''),
+                    'title':           title,
                     'source_name':     item.get('source', ''),
-                    'url':             item.get('url', ''),
-                    'bias_direction':  item.get('bias_direction', 'Centre'),
-                    'bias_intensity':  item.get('bias_intensity', 5),
+                    'url':             source_url,
+                    'bias_score':      canonical_bias['score'],
+                    'bias_label':      canonical_bias['label'],
+                    'credibility_score': canonical_credibility['score'],
                     'technique':       item.get('technique', ''),
                     'bias_explanation': item.get('explanation', ''),
                     'snippet':         '',
@@ -1556,14 +1450,21 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, 
     # ── Section 2: Business of Bias ──────────────────────────────────────────
     bias_html = ""
     for i, s in enumerate(bias_stories, 1):
-        direction = s.get('bias_direction', 'Centre')
-        d_lower = direction.lower()
-        is_right = 'right' in d_lower
-        is_left  = 'left'  in d_lower
+        label = s.get('bias_label', 'centre')
+        score = s.get('bias_score', 0)
+        display_label = label.replace('-', ' ').title()
+        is_right = 'right' in label
+        is_left  = 'left'  in label
         dir_color = '#c41e3a' if is_right else '#1d4ed8' if is_left else '#71717a'
-        technique = s.get('technique', '')
-        technique_html = f'<span style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#fafaf9;color:#a8a29e;padding:2px 7px;border-radius:4px">{technique}</span>' if technique else ""
         dir_bg    = '#fff1f3' if is_right else '#eff6ff' if is_left else '#f4f4f5'
+        technique = s.get('technique', '')
+        technique_html = (
+            f'<span style="font-size:10px;font-weight:700;letter-spacing:0.06em;'
+            f'text-transform:uppercase;background:#fafaf9;color:#a8a29e;'
+            f'padding:2px 7px;border-radius:4px">{technique}</span>'
+            if technique else ""
+        )
+        score_str = f"+{score}" if score > 0 else str(score)
         bias_html += f"""
         <div style="display:flex;gap:12px;margin-bottom:16px;padding-bottom:16px;
              border-bottom:1px solid #f0ede8;">
@@ -1577,7 +1478,7 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, 
               </span>
               <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
                     background:{dir_bg};color:{dir_color};padding:2px 7px;border-radius:4px">
-                {direction}
+                {display_label} ({score_str})
               </span>
               {technique_html}
             </div>

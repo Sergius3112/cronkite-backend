@@ -148,8 +148,9 @@ async def analyse_article_for_monitoring(url: str, source_name: str, source_doma
         return {
             'article_id': article_id,
             'title': data.get('title', ''),
-            'bias_score': data.get('bias_direction', 0),
-            'credibility_score': data.get('overall_credibility_score', 50),
+            'bias_score': data.get('bias', {}).get('score', 0),
+            'bias_label': data.get('bias', {}).get('label', 'centre'),
+            'credibility_score': data.get('credibility', {}).get('score', 50),
             'author': data.get('author'),
             'source': data.get('source', source_name),
             'summary': data.get('summary', ''),
