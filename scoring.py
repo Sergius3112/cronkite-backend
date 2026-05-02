@@ -374,6 +374,7 @@ Return only the JSON object specified in the rubric. No other text."""
         response = client.messages.create(
             model='claude-sonnet-4-5',
             max_tokens=1500,
+            temperature=0,
             system=ARTICLE_ANALYSIS_RUBRIC,
             messages=[{"role": "user", "content": user_message}],
         )
