@@ -33,6 +33,31 @@ BIAS_WEIGHTS = {
 
 FORMULA_VERSION = '1.0'
 
+# ── BIAS LABEL THRESHOLDS ──────────────────────────────────────────────────
+# Score band → label. Lower bound exclusive, upper bound inclusive (except
+# the bottom band which uses ≤). Calibrated April 2026 from live tests:
+# - moderately loaded tabloid prose lands at "right"/"left" (~±70-75)
+# - genuinely extreme content (slurs, dehumanisation, exclusion calls) at "far-"
+# - mainstream paper editorial lean lands at "centre-right"/"centre-left"
+# - wire copy and BBC straight news at "centre"
+BIAS_LABEL_THRESHOLDS = [
+    (-80, 'far-left'),
+    (-45, 'left'),
+    (-18, 'centre-left'),
+    (18, 'centre'),
+    (45, 'centre-right'),
+    (80, 'right'),
+    (101, 'far-right'),  # 101 ensures the +100 cap maps to far-right
+]
+
+
+def _label_from_score(score: int) -> str:
+    """Map a numeric bias score to its label using BIAS_LABEL_THRESHOLDS."""
+    for upper_bound, label in BIAS_LABEL_THRESHOLDS:
+        if score <= upper_bound:
+            return label
+    return 'far-right'  # fallback, shouldn't reach
+
 
 def get_publication_trust(domain: str) -> Optional[int]:
     """Look up publication base trust score from database."""
@@ -148,15 +173,7 @@ def calculate_bias_score(claude_assessment: dict) -> dict:
 
     final_score = max(-100, min(100, round(raw_score)))
 
-    bias_label = (
-        'far-left' if final_score <= -70 else
-        'left' if final_score <= -40 else
-        'centre-left' if final_score <= -15 else
-        'centre' if final_score <= 15 else
-        'centre-right' if final_score <= 40 else
-        'right' if final_score <= 70 else
-        'far-right'
-    )
+    bias_label = _label_from_score(final_score)
 
     return {
         'score': final_score,
