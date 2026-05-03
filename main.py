@@ -684,7 +684,13 @@ async def get_my_results(user: dict = Depends(get_current_user)):
 # ── AI article analysis (Anthropic + web search) ──────────────────────────────
 
 async def analyse_url_internal(url: str) -> dict:
-    """Core analysis: calls Claude with web search. Returns analysis dict without saving."""
+    """Core analysis: scrapes article body via tiered scraper, sends to Opus with web search
+    for author/publication research. Returns analysis dict without saving.
+
+    Determinism guarantee: the scraped article body is the canonical content for this run.
+    Opus is NEVER asked to retrieve the article — it only uses web_search to research the
+    author, publication, and cross-reference claims. Same URL → same body → same score.
+    """
     import anthropic as _anthropic
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -693,9 +699,16 @@ async def analyse_url_internal(url: str) -> dict:
 
     youtube_context = ""
     yt_channel = None
+    article_body = ""
+    scraped_title = ""
+    scraped_source = ""
+
     if is_youtube_url(url):
         yt = await fetch_youtube_transcript_whisper(url)  # raises ValueError on failure — no fallback
         yt_channel = yt['channel']
+        scraped_title = yt['title']
+        scraped_source = yt['channel']
+        article_body = yt['transcript']
         youtube_context = f"""
 VERIFIED VIDEO METADATA — use ONLY these fields for source attribution. Do not infer, guess, or override them under any circumstances.
 You are analysing a YouTube video titled '{yt['title']}', uploaded by '{yt['channel']}' on '{yt['upload_date']}'.
@@ -712,7 +725,36 @@ Analyse this video content as a media literacy expert. Pay special attention to:
 - Claims made verbally and their verifiability
 - Emotional manipulation through language and tone
 """
-        logger.info(f"[WHISPER] Passing transcript for video_id={yt['video_id']} to Claude")
+        logger.info(f"[ANALYSE] YouTube transcript obtained for video_id={yt['video_id']}")
+    else:
+        # ── DETERMINISTIC CONTENT RETRIEVAL ────────────────────────────────────
+        # Scrape the article body via the shared tiered scraper. Opus will be sent
+        # this exact body — it will NOT use web_search to retrieve the article.
+        # Guarantee: same URL → same scraped body → same analysis → same score.
+        scrape_result = await scrape_article_content(url)
+        if not scrape_result['success']:
+            raise ValueError(f"Could not retrieve article content from {url}: {scrape_result['error']}")
+        article_body = scrape_result['content']
+        scraped_title = scrape_result['title']
+        scraped_source = scrape_result['source']
+        logger.info(f"[ANALYSE] Scraped {len(article_body)} chars from {url}, title='{scraped_title[:60]}'")
+
+    # ── Construct the Opus prompt ───────────────────────────────────────────────
+    # Opus receives the article body as input. Web search is retained so Opus can
+    # research the author and publication for creator/source profiles and cross-reference
+    # key claims — but it must NOT use web search to retrieve the article itself.
+
+    if youtube_context:
+        content_block = youtube_context
+    else:
+        content_block = f"""
+ARTICLE TITLE: {scraped_title}
+ARTICLE SOURCE: {scraped_source}
+ARTICLE URL: {url}
+
+ARTICLE BODY (this is the canonical content — do not retrieve a different version):
+{article_body[:12000]}
+"""
 
     prompt = f"""IMPORTANT: You must respond with ONLY a JSON object. No preamble, no explanation, no markdown. Start your response with {{ and end with }}.
 
@@ -720,45 +762,33 @@ You are a world-class media literacy analyst combining the critical intelligence
 of an English Literature and Language scholar, the forensic rigour of an \
 investigative journalist, and the contextual awareness of a political historian.
 
-Analyse the content at this URL: {url}
-{youtube_context}
-Use web search to:
-1. Read the full content
-2. Research the author/creator/journalist — their history, known positions, \
-previous controversies, political affiliations or funding sources
-3. Research the publication/channel/party — their editorial stance, ownership, \
-funding, track record of accuracy
-4. Cross-reference at least 5 key claims against reliable sources
-5. For political content: research the party or figure's history and agenda
+The article you must analyse is provided BELOW. Do NOT use web_search to retrieve a \
+different version of this article — the body provided is the canonical content.
+
+You MAY use web_search ONLY to:
+1. Research the author/creator/journalist — their history, known positions, previous controversies, political affiliations or funding sources
+2. Research the publication/channel/party — editorial stance, ownership, funding, track record of accuracy
+3. Cross-reference factual claims made in the article against reliable sources
+
+You MUST NOT use web_search to fetch the article itself, fetch the URL, or retrieve a different version of the content. Analyse the body provided below.
+
+{content_block}
 
 This analysis will power both a school media literacy platform (Cronkite) and \
-an AI critical thinking companion (Horizons). It must be rigorous, precise and \
+an AI critical thinking companion. It must be rigorous, precise and \
 written with the authority of a language and literature scholar.
 
 Return ONLY valid JSON with this exact structure:
 {{
-  "title": "exact title",
+  "title": "exact title from the article body provided",
   "source": "publication or channel name",
   "author": "author/creator name if identifiable",
-  "summary": "3-4 sentence analytical summary — what is being argued, how it is being argued, and what is notable about the framing",
+  "summary": "3-4 sentence analytical summary",
   "content_type": "news_article|opinion_piece|video|social_media_post|political_policy|advertisement",
 
-  "credibility_score": 0-100,
-  "credibility_reasoning": "2-3 sentences explaining the score with specific evidence",
-  "claim_verifiability_score": 0-100,
-  "language_neutrality_score": 0-100,
-  "authorship_transparency_score": 0-100,
-  "goal": "The underlying communicative goal of this content — what is it ultimately trying to make the reader think, feel or do?",
-  "technique": "The primary rhetorical or linguistic technique used to achieve that goal — include specific examples of loaded or marked phrases (e.g. 'Afghan knifeman', 'benefit scroungers', 'coastal elites') and explain their effect",
-  "conclusion": "What a critical reader should conclude about this content — its reliability, its agenda, and how it should be read",
-
-  "bias_direction": -100 to +100,
-  "bias_intensity": 0-100,
-  "bias_reasoning": "2-3 sentences explaining bias with specific textual examples",
-  "lexical_bias_score": -100 to +100,
-  "source_selection_score": -100 to +100,
-  "narrative_framing_score": -100 to +100,
-  "omission_score": -100 to +100,
+  "goal": "The underlying communicative goal of this content",
+  "technique": "The primary rhetorical or linguistic technique used",
+  "conclusion": "What a critical reader should conclude about this content",
 
   "creator_profile": {{
     "name": "author or creator name",
@@ -778,14 +808,14 @@ Return ONLY valid JSON with this exact structure:
   "persuasion_techniques": [
     {{
       "technique": "name e.g. Appeal to Fear, Loaded Language, False Dichotomy, Bandwagon, Ad Hominem, Strawman, Cherry Picking",
-      "example": "direct quote or specific example from the content",
-      "explanation": "precise linguistic analysis of why this is persuasive and what psychological or emotional effect it creates"
+      "example": "direct quote or specific example FROM THE ARTICLE BODY ABOVE",
+      "explanation": "precise linguistic analysis"
     }}
   ],
 
   "key_claims": [
     {{
-      "claim": "specific claim made in the content",
+      "claim": "specific claim made in the article body",
       "verdict": "verified|unverified|misleading|false",
       "evidence": "what you found when cross-referencing",
       "source": "where you verified or refuted it"
@@ -794,94 +824,64 @@ Return ONLY valid JSON with this exact structure:
 
   "word_analysis": [
     {{
-      "word": "specific word or phrase — prioritise loaded, marked or ideologically charged language",
+      "word": "specific word or phrase FROM THE ARTICLE BODY",
       "flag_type": "loaded|misleading|emotional|euphemism|dysphemism|marked",
-      "explanation": "precise linguistic analysis — connotations, register, what the word choice reveals about the author's stance"
+      "explanation": "precise linguistic analysis"
     }}
   ],
 
-  "narrative_framing": "2-3 sentences on whose perspective dominates, whose voices are absent, what is taken for granted, and what the framing reveals about underlying assumptions",
+  "narrative_framing": "2-3 sentences on whose perspective dominates and what the framing reveals",
 
   "classroom_discussion_questions": [
-    "3-5 critical thinking questions a teacher could use with students"
+    "3-5 critical thinking questions"
   ],
 
   "focus_areas": ["evaluating_content", "persuasion_techniques", "online_behaviour", "identifying_risks", "managing_information"],
   "age_appropriateness": "ks2|ks3|ks4|ks5",
   "reading_level": "accessible|moderate|challenging",
 
-  "report_summary": "A 5-7 sentence executive summary written with the authority of a language and literature scholar — covering the content's goal, its primary techniques, the credibility of its source and creator, and what a critical reader should take away. Suitable for a teacher to read before assigning this to students, or for an individual to read as part of their media diet audit."
+  "report_summary": "A 5-7 sentence executive summary"
 }}
 
-Please include these additional scores in your JSON response (all 0-100 unless noted):
-- claim_verifiability_score: how verifiable are the claims made (0-100)
-- language_neutrality_score: how neutral is the language used (0-100)
-- authorship_transparency_score: how transparent is authorship/funding (0-100)
-- lexical_bias_score: loaded language bias (-100 left to +100 right)
-- source_selection_score: balance of sources quoted (-100 to +100)
-- narrative_framing_score: framing bias (-100 to +100)
-- omission_score: what perspective is missing (-100 to +100)
-
-IMPORTANT: Your entire response must be ONLY the JSON object above. No preamble, no explanation, no markdown fences. Start with {{ and end with }}."""
+IMPORTANT: Your entire response must be ONLY the JSON object above. Start with {{ and end with }}."""
 
     client = _anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
         model="claude-opus-4-6",
         max_tokens=8192,
-        tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 10}],
+        tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 8}],
         messages=[{"role": "user", "content": prompt}],
     )
 
-    import re
     text = "".join(block.text for block in response.content if block.type == "text")
     json_match = re.search(r'\{.*\}', text, re.DOTALL)
     if not json_match:
-        raise ValueError(f"No valid JSON in response. Got: {text[:500]}")
+        raise ValueError(f"No valid JSON in Opus response. Got: {text[:500]}")
 
     data = json.loads(json_match.group())
 
-    # For YouTube, enforce the verified channel name as source — never trust Claude's inference
+    # Override Opus's title/source with the scraped values — authoritative from the URL.
+    if scraped_title and not is_youtube_url(url):
+        data['title'] = scraped_title
+    if scraped_source and not is_youtube_url(url):
+        data['source'] = scraped_source
     if yt_channel:
-        data["source"] = yt_channel
+        data['source'] = yt_channel
 
-    # ── CANONICAL SCORING via score_article_combined ──────────────────────────
-    # Discard Opus's internal score outputs. They were produced by a different prompt
-    # with different calibration and aren't part of Cronkite's Truth Formula. The
-    # canonical pipeline (analyse_article_with_claude → calculate_*_score) is the
-    # trademarked methodology used everywhere in the product.
+    # ── CANONICAL SCORING via score_article_combined ──────────────────────────────
+    # Pass the same article_body that Opus analysed — guarantees scoring and rich
+    # content analysis are talking about the same article.
     from scoring import score_article_combined, cache_article_score
-
-    # Build article text for the rubric. Prefer the actual article body if Opus
-    # captured it, otherwise compose from the rich summary fields Opus produces.
-    if youtube_context:
-        article_text_for_scoring = (
-            f"Title: {data.get('title', '')}\n\n"
-            f"Channel: {data.get('source', '')}\n\n"
-            f"Summary: {data.get('summary', '')}\n\n"
-            f"Report summary: {data.get('report_summary', '')}\n\n"
-            f"Narrative framing: {data.get('narrative_framing', '')}"
-        )
-    else:
-        article_text_for_scoring = (
-            f"Title: {data.get('title', '')}\n\n"
-            f"Summary: {data.get('summary', '')}\n\n"
-            f"Report summary: {data.get('report_summary', '')}\n\n"
-            f"Narrative framing: {data.get('narrative_framing', '')}\n\n"
-            f"Goal: {data.get('goal', '')}\n\n"
-            f"Technique: {data.get('technique', '')}"
-        )
 
     combined = score_article_combined(
         url=url,
-        title=data.get('title', ''),
-        content=article_text_for_scoring,
-        source=data.get('source', ''),
+        title=data.get('title', scraped_title),
+        content=article_body,
+        source=data.get('source', scraped_source),
         author=data.get('author', ''),
     )
 
-    # ── Strip OLD score fields from response ──────────────────────────────────
-    # These were Opus's internal scoring outputs. They must not coexist with the
-    # canonical fields, otherwise downstream consumers may read stale numbers.
+    # Strip any old score field names that may have leaked in from Opus's output
     OLD_SCORE_FIELDS = [
         'credibility_score', 'bias_direction', 'bias_intensity',
         'claim_verifiability_score', 'language_neutrality_score', 'authorship_transparency_score',
@@ -899,7 +899,7 @@ IMPORTANT: Your entire response must be ONLY the JSON object above. No preamble,
     data['analysis_failed'] = combined.get('analysis_failed', False)
     data['formula_version'] = combined['credibility'].get('formula_version', '1.0')
 
-    # Cache so /api/article-scores returns the same scores
+    # Cache so /api/article-scores returns the same scores for this URL
     try:
         cache_article_score(
             url=url,
@@ -1969,23 +1969,26 @@ If paywalled, include whatever text is publicly accessible."""
         return {}
 
 
-@app.get("/api/read-article")
-async def read_article(url: str = ""):
-    """Fetch and extract article text/title for the Cronkite Article Reader.
-
-    Tiered strategy:
-      0. Block known app-only domains (return access_status=requires_app)
-      1. httpx + trafilatura (fast, catches most news sites)
-      2. httpx + BeautifulSoup paragraph fallback
-      3. Playwright (JS-rendered sites)
-      4. Claude web_fetch (paywalled/anti-bot)
-
-    Returns access_status: 'free' | 'paywalled' | 'requires_app' | 'blocked'
-    so the frontend can show appropriate messaging.
+async def scrape_article_content(url: str) -> dict:
     """
-    if not url:
-        return JSONResponse({"error": "Missing url parameter"}, status_code=400)
+    Tiered article scraper used by both /api/read-article and analyse_url_internal.
 
+    Returns:
+      {
+        'content': str,        # cleaned article body (empty string on failure)
+        'title': str,
+        'source': str,         # hostname or cleaner source name
+        'access_status': str,  # 'free' | 'paywalled' | 'requires_app' | 'blocked'
+        'tier': str | None,    # which tier succeeded
+        'success': bool,       # True if usable content was retrieved
+        'error': str | None,   # human-readable message on failure
+      }
+
+    This is the canonical content-retrieval pipeline for Cronkite. Both the student
+    Reader and the teacher Analyse modal go through this function so that the same URL
+    always produces the same article body, regardless of which surface initiated the
+    request.
+    """
     APP_ONLY_DOMAINS = {
         'tiktok.com': 'TikTok',
         'instagram.com': 'Instagram',
@@ -1994,25 +1997,23 @@ async def read_article(url: str = ""):
         'x.com': 'X (Twitter)',
         'twitter.com': 'X (Twitter)',
     }
-    from urllib.parse import urlparse
     parsed = urlparse(url)
     hostname = (parsed.netloc or '').replace('www.', '')
+    source = hostname or url
 
     for blocked_dom, platform_name in APP_ONLY_DOMAINS.items():
         if blocked_dom in hostname:
-            return JSONResponse({
-                "title": url, "content": None, "source": hostname, "url": url,
-                "blocked": True,
-                "access_status": "requires_app",
-                "platform": platform_name,
-                "error": f"This is {platform_name} content. Paste the post text below to analyse it with Cronkite, or use the Cronkite mobile share sheet (coming soon).",
-            })
+            return {
+                'content': '', 'title': url, 'source': source,
+                'access_status': 'requires_app', 'tier': None,
+                'success': False,
+                'error': f"This is {platform_name} content. Paste the post text to analyse it with Cronkite.",
+            }
 
     MIN_CONTENT_LENGTH = 600
 
     content = ''
     title = ''
-    source = hostname or url
     tier_used = None
     cached_strategy = _SCRAPE_STRATEGY_CACHE.get(hostname)
 
@@ -2048,10 +2049,7 @@ async def read_article(url: str = ""):
                 for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form']):
                     tag.decompose()
                 article_el = soup.find('article') or soup.find('main')
-                if article_el:
-                    paragraphs = article_el.find_all('p')
-                else:
-                    paragraphs = soup.find_all('p')
+                paragraphs = article_el.find_all('p') if article_el else soup.find_all('p')
                 bs_content = '\n\n'.join(
                     p.get_text(strip=True) for p in paragraphs
                     if len(p.get_text(strip=True)) > 40
@@ -2066,7 +2064,7 @@ async def read_article(url: str = ""):
             logger.info(f"[SCRAPE] httpx tier failed for {hostname}: {e}")
             content = ''
 
-    # ── Tier 3: Playwright ───────────────────────────────────────────────────
+    # ── Tier 3: Playwright ────────────────────────────────────────────────────
     if (not content or len(content) < MIN_CONTENT_LENGTH) and cached_strategy != 'claude_fetch':
         logger.info(f"[SCRAPE] trying Playwright for {hostname}")
         pw_result = await scrape_with_playwright(url)
@@ -2080,7 +2078,7 @@ async def read_article(url: str = ""):
         elif pw_content and is_block_page(pw_content):
             logger.info(f"[SCRAPE] playwright returned block page for {hostname}, advancing to claude_fetch")
 
-    # ── Tier 4: Claude web_fetch ─────────────────────────────────────────────
+    # ── Tier 4: Claude web_fetch ──────────────────────────────────────────────
     if not content or len(content) < MIN_CONTENT_LENGTH:
         logger.info(f"[SCRAPE] trying Claude web_fetch for {hostname}")
         cf_result = await fetch_article_with_claude(url)
@@ -2097,27 +2095,57 @@ async def read_article(url: str = ""):
     if tier_used:
         _SCRAPE_STRATEGY_CACHE[hostname] = tier_used
 
-    # Determine access_status for honest frontend messaging
-    if content and len(content) >= 200:
-        access_status = 'paywalled' if is_paywalled(content) else 'free'
+    if not content or len(content) < 200:
+        logger.warning(f"[SCRAPE] ALL TIERS FAILED for {hostname}")
+        return {
+            'content': '', 'title': title or url, 'source': source,
+            'access_status': 'blocked', 'tier': None,
+            'success': False,
+            'error': "We couldn't read this article automatically. If it's behind a paywall, sign in via your school's subscription and paste the article text using the box below.",
+        }
 
-        if access_status == 'free':
-            content = clean_article_with_claude(content, url)
+    access_status = 'paywalled' if is_paywalled(content) else 'free'
+    if access_status == 'free':
+        content = clean_article_with_claude(content, url)
 
-        return JSONResponse({
-            "title": title, "content": content, "source": source, "url": url,
-            "tier": tier_used,
-            "access_status": access_status,
-            "blocked": False,
-        })
+    logger.info(f"[SCRAPE] Success for {url}: tier={tier_used}, access={access_status}, chars={len(content)}")
+    return {
+        'content': content,
+        'title': title,
+        'source': source,
+        'access_status': access_status,
+        'tier': tier_used,
+        'success': True,
+        'error': None,
+    }
 
-    # All tiers failed — distinguish paywall from generic block
-    logger.warning(f"[SCRAPE] ALL TIERS FAILED for {hostname}")
+
+@app.get("/api/read-article")
+async def read_article(url: str = ""):
+    """Fetch and extract article text/title for the Cronkite Article Reader."""
+    if not url:
+        return JSONResponse({"error": "Missing url parameter"}, status_code=400)
+
+    result = await scrape_article_content(url)
+
+    if not result['success']:
+        # Preserve requires_app platform messaging
+        response_body = {
+            "title": result['title'], "content": None, "source": result['source'], "url": url,
+            "blocked": True,
+            "access_status": result['access_status'],
+            "error": result['error'],
+        }
+        return JSONResponse(response_body)
+
     return JSONResponse({
-        "title": title or url, "content": None, "source": source, "url": url,
-        "blocked": True,
-        "access_status": "blocked",
-        "error": "We couldn't read this article automatically. If it's behind a paywall, sign in via your school's subscription and paste the article text using the box below. Cronkite will analyse pasted text the same way it analyses scraped articles.",
+        "title": result['title'],
+        "content": result['content'],
+        "source": result['source'],
+        "url": url,
+        "tier": result['tier'],
+        "access_status": result['access_status'],
+        "blocked": False,
     })
 
 
