@@ -136,7 +136,8 @@ def calculate_credibility_score(
     # Conflict of interest flags
     coi_flags = []
     if author_data and author_data.get('conflict_of_interest_flags'):
-        coi_flags = author_data['conflict_of_interest_flags']
+        raw = author_data['conflict_of_interest_flags']
+        coi_flags = list(raw) if hasattr(raw, '__iter__') and not isinstance(raw, str) else []
 
     return {
         'score': final_score,

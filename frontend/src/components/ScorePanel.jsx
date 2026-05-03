@@ -299,7 +299,7 @@ export default function ScorePanel({
           {/* COI flags */}
           {scores.credibility?.conflict_of_interest_flags?.length > 0 && (
             <div style={{ fontSize: '12px', color: '#E5945C', marginBottom: '8px' }}>
-              ⚑ Conflict of interest: {scores.credibility.conflict_of_interest_flags.join(', ')}
+              ⚑ Conflict of interest: {(scores.credibility?.conflict_of_interest_flags || []).join(', ')}
             </div>
           )}
 
