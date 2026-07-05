@@ -2481,41 +2481,47 @@ async def generate_for_you_suggestions(modules: list) -> list:
             domain = cand['url'].split('/')[2].replace('www.', '') if cand['url'].startswith('http') else ''
             bias_lean = BIAS_DOMAIN_MAP.get(domain, 'centre')
 
+            # Canonical content retrieval + scoring. For You must never bank an
+            # article it can't fully analyse end-to-end — drop silently on failure
+            # so no partial or defaulted score reaches the feed or the shared cache.
             try:
-                async with httpx.AsyncClient(timeout=8, follow_redirects=True, headers={
-                    'User-Agent': 'Mozilla/5.0'
-                }) as client:
-                    r = await client.get(cand['url'])
-                    html = r.text
-                content_for_scoring = _extract_with_trafilatura(html, cand['url']) or ''
+                scrape_result = await scrape_article_content(cand['url'])
+                if not scrape_result['success']:
+                    logger.info(f"[FOR-YOU] Skipping {cand['url']}: {scrape_result['error']}")
+                    continue
+                article_body = scrape_result['content']
+                scraped_title = scrape_result['title'] or cand['title']
+                scraped_source = scrape_result['source'] or domain
+
                 combined = score_article_combined(
-                    url=cand['url'], title=cand['title'], content=content_for_scoring,
-                    source=domain, author='',
+                    url=cand['url'], title=scraped_title, content=article_body,
+                    source=scraped_source, author='',
                 )
+                if combined.get('analysis_failed'):
+                    logger.info(f"[FOR-YOU] Skipping {cand['url']}: analysis_failed=True")
+                    continue
+
                 credibility = combined['credibility']
                 credibility['rationale'] = combined.get('rationale', {})
                 bias_score = combined['bias']
                 cache_article_score(
-                    url=cand['url'], title=cand['title'], source=domain,
+                    url=cand['url'], title=scraped_title, source=scraped_source,
                     credibility=credibility, bias=bias_score,
-                    summary=content_for_scoring[:500],
+                    summary=article_body[:500],
                 )
-                cred_score = credibility.get('score', 50)
-                bias_label = bias_score.get('label', bias_lean)
             except Exception as e:
-                logger.warning(f"[FOR-YOU] Pre-score failed for {cand['url']}: {e}")
-                cred_score = None
-                bias_label = bias_lean
+                logger.warning(f"[FOR-YOU] Canonical scoring failed for {cand['url']}: {e}")
+                continue
 
             results_out.append({
                 'module_id': mod_id,
                 'module_title': mod_title,
-                'title': cand['title'],
+                'title': scraped_title,
                 'url': cand['url'],
-                'source': domain,
+                'source': scraped_source,
                 'reason': cand['snippet'] or f"Relevant to your {mod_title} module.",
-                'bias': bias_label,
-                'credibility_score': cred_score,
+                'bias': bias_score.get('label', bias_lean),
+                'credibility_score': credibility.get('score', 50),
                 'published_date': cand['published_date'],
             })
             banked_for_mod += 1
