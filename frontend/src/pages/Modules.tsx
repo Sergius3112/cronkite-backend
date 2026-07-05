@@ -243,7 +243,7 @@ const Modules = () => {
                   const art = a.articles;
                   const title = art?.title || a.article_title || a.article_url || a.id;
                   const source = art?.source || '';
-                  const score = (art?.analysis as any)?.overall_credibility_score ?? (art?.analysis as any)?.credibility_score;
+                  const score = (art?.analysis as any)?.credibility?.score ?? null;
                   const url = a.article_url || art?.url;
 
                   return (

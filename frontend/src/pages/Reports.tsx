@@ -74,7 +74,7 @@ const Reports = () => {
 
   // Average bias direction
   const avgBias = useMemo(() => {
-    const biases = filtered.map(a => a.bias_direction).filter((b): b is number => b != null);
+    const biases = filtered.map(a => a.bias_score).filter((b): b is number => b != null);
     if (biases.length === 0) return null;
     return Math.round(biases.reduce((s, v) => s + v, 0) / biases.length);
   }, [filtered]);
@@ -264,7 +264,7 @@ const Reports = () => {
                     />
                   </div>
                   <p className="text-xs text-muted-foreground text-center">
-                    Average bias score: <span className="font-semibold text-foreground">{avgBias > 0 ? '+' : ''}{avgBias}</span> across {filtered.filter(a => a.bias_direction != null).length} articles
+                    Average bias score: <span className="font-semibold text-foreground">{avgBias > 0 ? '+' : ''}{avgBias}</span> across {filtered.filter(a => a.bias_score != null).length} articles
                   </p>
                 </div>
               )}

@@ -35,7 +35,8 @@ interface ArticleCardProps {
 
 export function ArticleCard({ article, modules, onAssign, onApprove, onViewAnalysis, onRequestAssign }: ArticleCardProps) {
   const focusAreas = article.analysis?.focus_areas ?? [];
-  const score = article.analysis?.overall_credibility_score;
+  const score = article.analysis?.credibility?.score;
+  const biasScore = article.analysis?.bias?.score;
 
   return (
     <Card
@@ -91,14 +92,14 @@ export function ArticleCard({ article, modules, onAssign, onApprove, onViewAnaly
             })}
           </div>
         )}
-        {article.analysis?.bias_direction != null && (
+        {biasScore != null && (
           <div style={{ margin: '8px 0' }}>
             <div style={{ position: 'relative', height: '6px', background: 'linear-gradient(to right, #3b82f6, rgba(26,23,20,0.08), #ef4444)', borderRadius: '3px' }}>
               <div style={{
                 position: 'absolute', top: '50%', transform: 'translate(-50%, -50%)',
                 width: '12px', height: '12px', background: '#1A1714', borderRadius: '50%',
                 border: '2px solid #F7F3EC',
-                left: `${((article.analysis.bias_direction + 100) / 200) * 100}%`
+                left: `${((biasScore + 100) / 200) * 100}%`
               }} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#B0A89E', marginTop: '3px' }}>

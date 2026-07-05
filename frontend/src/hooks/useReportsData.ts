@@ -11,7 +11,7 @@ export type Assignment = {
   status: string;
   due_date: string | null;
   instructions: string;
-  bias_direction: number | null;
+  bias_score: number | null;
 };
 
 export type StudentResult = {
@@ -57,7 +57,7 @@ export function useReportsData(moduleIds: string[]) {
         status: a.status ?? 'assigned',
         due_date: a.due_date ?? null,
         instructions: a.instructions ?? '',
-        bias_direction: a.articles?.analysis?.bias_direction ?? null,
+        bias_score: a.articles?.analysis?.bias?.score ?? null,
       })));
     }
     if (resultRes.data) setResults(resultRes.data as StudentResult[]);

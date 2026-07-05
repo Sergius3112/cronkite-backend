@@ -244,7 +244,7 @@ function AssignmentCard({ assignment: a, mod, done, completing, onComplete, onVi
   const article = a.articles ?? null
   const title = article?.title || a.article_title || a.article_url || a.id
   const articleUrl = a.article_url || article?.url || ''
-  const score = article?.analysis?.overall_credibility_score ?? article?.analysis?.credibility_score
+  const score = article?.analysis?.credibility?.score ?? null
 
   return (
     <div style={{ background: '#fff', border: '1px solid rgba(26,23,20,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '10px', opacity: done ? 0.7 : 1 }}

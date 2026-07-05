@@ -189,14 +189,14 @@ export default function SituationRoom() {
                   <span style={{ fontSize: '9px', background: '#1A1714', color: '#F7F3EC', borderRadius: '4px', padding: '2px 6px', flexShrink: 0 }}>AUTO</span>
                 </div>
                 <div style={{ fontSize: '11px', color: '#7A746E', marginBottom: '8px' }}>{article.source || article.monitoring_source}</div>
-                {article.analysis?.bias_direction != null && (
+                {article.analysis?.bias?.score != null && (
                   <div style={{ marginBottom: '8px' }}>
                     <div style={{ position: 'relative', height: '4px', background: 'linear-gradient(to right, #3b82f6, rgba(26,23,20,0.08), #ef4444)', borderRadius: '2px' }}>
                       <div style={{
                         position: 'absolute', top: '50%', transform: 'translate(-50%, -50%)',
                         width: '10px', height: '10px', background: '#1A1714', borderRadius: '50%',
                         border: '2px solid #F7F3EC',
-                        left: `${((article.analysis.bias_direction + 100) / 200) * 100}%`
+                        left: `${((article.analysis.bias.score + 100) / 200) * 100}%`
                       }} />
                     </div>
                   </div>

@@ -298,7 +298,9 @@ export default function ArticleReader() {
                 <div style={{ fontSize: '15px', lineHeight: 1.8, color: '#1A1714' }}>
                   {mainContent.split('\n').map((para, i) => {
                     if (!para.trim()) return null
-                    const keyPhrases = (showHighlights && scores?.rationale?.key_phrases) || []
+                    const keyPhrases = (showHighlights && Array.isArray(scores?.rationale?.key_phrases))
+                      ? scores.rationale.key_phrases
+                      : []
                     return (
                       <p key={i} style={{ marginBottom: '16px' }}>
                         {renderParagraphWithHighlights(para, keyPhrases)}

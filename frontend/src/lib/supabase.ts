@@ -41,7 +41,36 @@ export type Article = {
   summary: string
   content_type: string
   analysis: {
-    overall_credibility_score?: number
+    credibility?: {
+      score?: number
+      components?: {
+        source_trust?: number
+        claim_verifiability?: number
+        language_neutrality?: number
+        authorship_transparency?: number
+        cross_source_consensus?: number
+      }
+      source_trust?: number | null
+      author_trust?: number | null
+      conflict_of_interest_flags?: string[]
+    }
+    bias?: {
+      score?: number
+      label?: string
+      components?: {
+        lexical_bias?: number
+        source_selection?: number
+        narrative_framing?: number
+        omission?: number
+      }
+    }
+    rationale?: {
+      credibility_brief?: string
+      bias_brief?: string
+      key_phrases?: string[]
+    }
+    formula_version?: string
+    analysis_failed?: boolean
     focus_areas?: string[]
     [key: string]: unknown
   } | null

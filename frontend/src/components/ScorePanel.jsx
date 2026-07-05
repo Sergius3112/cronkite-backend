@@ -146,7 +146,7 @@ export default function ScorePanel({
   const biasLabel = scores.bias?.label ?? 'centre'
   const credBrief = scores.rationale?.credibility_brief ?? ''
   const biasBrief = scores.rationale?.bias_brief ?? ''
-  const keyPhrases = scores.rationale?.key_phrases ?? []
+  const keyPhrases = Array.isArray(scores.rationale?.key_phrases) ? scores.rationale.key_phrases : []
 
   const biasColour =
     biasLabel.includes('left') ? '#3D6BB0' :
@@ -297,9 +297,10 @@ export default function ScorePanel({
           )}
 
           {/* COI flags */}
-          {scores.credibility?.conflict_of_interest_flags?.length > 0 && (
+          {Array.isArray(scores.credibility?.conflict_of_interest_flags) &&
+            scores.credibility.conflict_of_interest_flags.length > 0 && (
             <div style={{ fontSize: '12px', color: '#E5945C', marginBottom: '8px' }}>
-              ⚑ Conflict of interest: {(scores.credibility?.conflict_of_interest_flags || []).join(', ')}
+              ⚑ Conflict of interest: {scores.credibility.conflict_of_interest_flags.join(', ')}
             </div>
           )}
 
