@@ -1027,38 +1027,6 @@ async def api_notify(req: NotifyRequest):
 
 # ── Daily Briefing newsletter agent ──────────────────────────────────────────
 
-# ── Daily Briefing: RSS feeds by category ────────────────────────────────────
-
-COVERAGE_FEEDS = {
-    "International Conflicts and Wars": [
-        "https://feeds.bbci.co.uk/news/world/rss.xml",
-        "https://www.theguardian.com/world/rss",
-        "https://feeds.skynews.com/feeds/rss/world.xml",
-        "https://www.independent.co.uk/news/world/rss",
-    ],
-    "Domestic Politics and Elections": [
-        "https://feeds.bbci.co.uk/news/politics/rss.xml",
-        "https://www.theguardian.com/politics/rss",
-        "https://feeds.skynews.com/feeds/rss/politics.xml",
-    ],
-    "Business and Economics": [
-        "https://feeds.bbci.co.uk/news/business/rss.xml",
-        "https://www.theguardian.com/business/rss",
-        "https://feeds.ft.com/rss/home/uk",
-    ],
-    "Social and Cultural Issues": [
-        "https://feeds.bbci.co.uk/news/uk/rss.xml",
-        "https://www.theguardian.com/society/rss",
-        "https://www.independent.co.uk/news/uk/rss",
-        "https://www.theguardian.com/culture/rss",
-    ],
-    "Technology, AI, and Social Media": [
-        "https://feeds.bbci.co.uk/news/technology/rss.xml",
-        "https://www.theguardian.com/technology/rss",
-        "https://www.wired.com/feed/rss",
-    ],
-}
-
 # Bias feeds grouped by political lean — one slot per category in the final section
 BIAS_FEED_GROUPS = {
     "right": [
@@ -1089,173 +1057,182 @@ BIAS_FEED_GROUPS = {
 }
 
 
-def fetch_stories_from_feeds(feed_urls: list, max_per_feed: int = 3) -> list:
-    """Fetch up to max_per_feed entries from each feed URL, deduplicated by title."""
-    import feedparser
-    stories = []
-    seen = set()
-    for feed_url in feed_urls:
-        try:
-            feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:max_per_feed]:
-                title = entry.get('title', '').strip()
-                url   = entry.get('link',  '').strip()
-                desc  = entry.get('summary', entry.get('description', '')).strip()
-                if title and url and title not in seen:
-                    seen.add(title)
-                    stories.append({
-                        'title':     title,
-                        'url':       url,
-                        'source':    feed.feed.get('title', 'Unknown'),
-                        'published': entry.get('published', ''),
-                        'snippet':   desc[:300],
-                    })
-        except Exception as e:
-            logger.warning(f"Failed to fetch feed {feed_url}: {e}")
-    return stories
+# ── Cronkite Coverage: original journalism pipeline (change set 3.0.5) ────────
+# Four topic sections, up to three original Cronkite stories per section.
+# Each story is synthesised from 2+ scraped source articles by Sonnet in both
+# variant voices. Sources are inputs to synthesis, not analysed products: they
+# are never scored and never written to article_scores_cache.
+
+COVERAGE_TOPICS = [
+    ("Politics", "global politics"),
+    ("Tech", "global technology"),
+    ("World", "global social issues and headlines, such as conflicts, humanitarian situations and energy"),
+    ("UK", "UK national social and cultural issues"),
+]
+
+COVERAGE_STORIES_PER_TOPIC = 3
+COVERAGE_MIN_SOURCES = 2
 
 
-def haiku_summarise(prompt: str, max_tokens: int = 300) -> str:
-    """Call Claude Haiku with a plain prompt, return the text response."""
-    import anthropic as _anthropic
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        return ""
-    client = _anthropic.Anthropic(api_key=api_key)
+def identify_coverage_events(topic_name: str, topic_desc: str, exclude_headlines: list = None) -> list:
+    """Ask Sonnet (with web_search) for up to 3 newsworthy events in a topic area.
+    Returns a list of {headline, brief, source_urls} dicts; empty list on failure."""
+    from briefing_voice import EVENT_IDENTIFICATION_PROMPT
+
+    prompt = EVENT_IDENTIFICATION_PROMPT.format(topic_name=topic_name, topic_desc=topic_desc)
+    if exclude_headlines:
+        exclusions = "\n".join(f"- {h}" for h in exclude_headlines)
+        prompt += f"\n\nDo NOT return any of these events, which are already covered:\n{exclusions}"
+
     try:
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=max_tokens,
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=2048,
+            temperature=0.3,
+            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
             messages=[{"role": "user", "content": prompt}],
         )
-        return resp.content[0].text.strip()
-    except Exception as e:
-        logger.warning(f"Haiku call failed: {e}")
-        return ""
-
-
-CATEGORY_DEFINITIONS = {
-    "International Conflicts and Wars": (
-        "active military conflicts, wars, airstrikes, invasions, peace negotiations, "
-        "NATO, UN peacekeeping. NOT trade deals, technology policy, or diplomatic meetings "
-        "unrelated to active conflict."
-    ),
-    "Domestic Politics and Elections": (
-        "UK government policy, parliamentary debates, party politics, elections, "
-        "local government, devolution."
-    ),
-    "Business and Economics": (
-        "markets, corporate news, trade, inflation, employment, economic data, company results."
-    ),
-    "Social and Cultural Issues": (
-        "health, education, crime, immigration, social policy, arts, religion, sport."
-    ),
-    "Technology, AI, and Social Media": (
-        "AI developments, tech company news, social media platforms, cybersecurity, "
-        "regulation of tech."
-    ),
-}
-
-
-def fetch_categorised_stories() -> dict:
-    """Return {category: [story, ...]} where Haiku writes its own headline and summary.
-    Sources are used as raw material only — Cronkite is the author, not cited.
-    Passes accumulated seen_topics into each prompt so the model avoids repeats.
-    Post-generation dedup pass removes semantically similar headlines."""
-    result = {}
-    seen_urls:         set = set()
-    seen_topics:       set = set()   # raw RSS title fingerprints
-    generated_headlines: list = []   # all synthesised headlines for post-gen dedup
-
-    for category, feeds in COVERAGE_FEEDS.items():
-        raw_stories = fetch_stories_from_feeds(feeds, max_per_feed=5)
-
-        # Pre-filter raw stories by URL to avoid reusing same source article
-        filtered = [s for s in raw_stories if s.get('url', '') not in seen_urls]
-
-        cat_def = CATEGORY_DEFINITIONS.get(category, "")
-        exclusions = "; ".join(sorted(seen_topics)[:20]) if seen_topics else "none yet"
-
-        clusters = [filtered[i:i+3] for i in range(0, min(len(filtered), 9), 3)]
-        synthesised = []
-        for cluster in clusters[:3]:
-            raw_text = "\n\n".join(
-                f"- {s['title']}: {s['snippet']}" for s in cluster if s.get('snippet') or s.get('title')
-            )
-            prompt = (
-                f"You are a wire journalist at Cronkite, a neutral UK news service for schools.\n\n"
-                f"CATEGORY: {category}\n"
-                f"This category covers: {cat_def}\n"
-                f"You must strictly assign stories only to the matching category. "
-                f"If the raw material below does not clearly fit this category, write 'SKIP'.\n\n"
-                f"Topics already covered in this briefing (DO NOT repeat these):\n{exclusions}\n"
-                f"You must not write about any of these topics. Choose entirely different news stories.\n\n"
-                f"Using the raw news items below as source material, write an original news story:\n\n"
-                f"Rules:\n"
-                f"- Write a precise headline (max 12 words) naming the specific people, organisations "
-                f"and places involved. Never use generalisations.\n"
-                f"  BAD: 'Former Labour politician named in scandal'\n"
-                f"  GOOD: 'Former Labour Health Secretary Andy Burnham named in leaked document "
-                f"linking him to property developer donations'\n"
-                f"- Write a 2-sentence summary that names every person, organisation and place "
-                f"specifically. No vague references.\n"
-                f"- Do not mention BBC, Guardian, Sky, FT, or any outlet by name.\n"
-                f"- Write as Cronkite's own journalism, not a summary of sources.\n\n"
-                f"Raw material:\n{raw_text}\n\n"
-                f"Format exactly as:\nHeadline: [your headline]\nSummary: [your 2-sentence summary]\n"
-                f"Or if the material doesn't fit this category: SKIP"
-            )
-            raw = haiku_summarise(prompt)
-
-            if raw.strip().upper().startswith("SKIP"):
-                logger.info(f"[DEDUP] Skipped off-category cluster for '{category}'")
-                continue
-
-            headline = ""
-            summary = ""
-            for line in raw.splitlines():
-                if line.startswith("Headline:"):
-                    headline = line[9:].strip()
-                elif line.startswith("Summary:"):
-                    summary = line[8:].strip()
-
-            if headline:
-                synthesised.append({
-                    'title':   headline,
-                    'url':     cluster[0]['url'],
-                    'summary': summary,
+        text = "".join(b.text for b in response.content if getattr(b, 'type', None) == 'text').strip()
+        start = text.find('{')
+        end = text.rfind('}') + 1
+        if start < 0 or end <= start:
+            logger.warning(f"[COVERAGE] No JSON in event identification for {topic_name}")
+            return []
+        events = json.loads(text[start:end]).get('events', [])
+        cleaned = []
+        for ev in events[:COVERAGE_STORIES_PER_TOPIC]:
+            if ev.get('headline') and isinstance(ev.get('source_urls'), list) and ev['source_urls']:
+                cleaned.append({
+                    'headline': str(ev['headline']),
+                    'brief': str(ev.get('brief', '')),
+                    'source_urls': [str(u) for u in ev['source_urls'][:5]],
                 })
-                generated_headlines.append((category, headline))
-                # Add synthesised headline keywords and source URLs to seen sets
-                seen_topics.add(headline.lower()[:80])
-                for s in cluster:
-                    if s.get('url'):
-                        seen_urls.add(s['url'])
-                    t = s.get('title', '').lower()[:60]
-                    if t:
-                        seen_topics.add(t)
+        return cleaned
+    except Exception as e:
+        logger.warning(f"[COVERAGE] Event identification failed for {topic_name}: {e}")
+        return []
 
-        result[category] = synthesised
-        logger.info(f"Category '{category}': {len(synthesised)} synthesised stories")
 
-    # ── Post-generation deduplication pass ───────────────────────────────────
-    # Check all 15 headlines for keywords overlap; remove likely duplicates
-    all_stories = [(cat, s) for cat, stories in result.items() for s in stories]
-    used_keywords: set = set()
-    for cat, s in all_stories:
-        words = set(s['title'].lower().split()) - {
-            'the','a','an','in','on','at','to','of','and','for','is','are','was',
-            'with','by','as','uk','over','after','amid','says','new','amid'
-        }
-        overlap = words & used_keywords
-        # If more than 3 content words overlap with a previous headline, flag as duplicate
-        if len(overlap) >= 3:
-            logger.info(f"[DEDUP] Removed duplicate topic: {s['title']}")
-            result[cat] = [x for x in result[cat] if x['title'] != s['title']]
-        else:
-            used_keywords |= words
+def _compose_coverage_story(event: dict, topic_name: str, sources: list, variant: str) -> str:
+    """One Sonnet call: synthesise the scraped sources into an original Cronkite
+    story in the given variant voice. Returns '' on failure (caller drops story)."""
+    from briefing_voice import STUDENT_COVERAGE_PROMPT, TEACHER_COVERAGE_PROMPT
 
-    return result
+    sources_block = "\n\n".join(
+        f"SOURCE {i} ({s['source']}): {s['title']}\n{s['content'][:2000]}"
+        for i, s in enumerate(sources, 1)
+    )
+    template = STUDENT_COVERAGE_PROMPT if variant == 'student' else TEACHER_COVERAGE_PROMPT
+    prompt = template.format(
+        headline=event['headline'],
+        brief=event.get('brief', ''),
+        topic=topic_name,
+        sources_block=sources_block,
+    )
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1024,
+            temperature=0.4,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return "".join(b.text for b in response.content if getattr(b, 'type', None) == 'text').strip()
+    except Exception as e:
+        logger.warning(f"[COVERAGE] Synthesis failed ({variant}) for '{event['headline']}': {e}")
+        return ''
+
+
+async def _build_coverage_story(event: dict, topic_name: str) -> dict:
+    """Scrape an event's sources and synthesise both variant write-ups.
+    Returns the story record, or None if the event can't be built end-to-end."""
+    import asyncio
+
+    scrape_results = await asyncio.gather(
+        *(scrape_article_content(u) for u in event['source_urls']),
+        return_exceptions=True,
+    )
+    sources = []
+    for url, res in zip(event['source_urls'], scrape_results):
+        if isinstance(res, Exception):
+            logger.info(f"[COVERAGE] Scrape raised for {url}: {res}")
+            continue
+        if not res.get('success'):
+            logger.info(f"[COVERAGE] Skipping source {url}: {res.get('error')}")
+            continue
+        sources.append({
+            'url': url,
+            'title': res['title'],
+            'source': res['source'],
+            'content': res['content'],
+        })
+
+    if len(sources) < COVERAGE_MIN_SOURCES:
+        logger.info(f"[COVERAGE] Dropping event '{event['headline']}': only {len(sources)} scrapeable sources")
+        return None
+
+    writeup_student, writeup_teacher = await asyncio.gather(
+        asyncio.to_thread(_compose_coverage_story, event, topic_name, sources, 'student'),
+        asyncio.to_thread(_compose_coverage_story, event, topic_name, sources, 'teacher'),
+    )
+    if not writeup_student or not writeup_teacher:
+        logger.info(f"[COVERAGE] Dropping event '{event['headline']}': synthesis failed")
+        return None
+
+    seen = set()
+    publications = []
+    for s in sources:
+        name = s['source']
+        if name and name not in seen:
+            seen.add(name)
+            publications.append(name)
+
+    return {
+        'headline': event['headline'],
+        'topic': topic_name,
+        'writeup_student': writeup_student,
+        'writeup_teacher': writeup_teacher,
+        'source_publications': publications,
+        'source_urls': [s['url'] for s in sources],
+    }
+
+
+async def generate_coverage_stories() -> list:
+    """Full Cronkite Coverage pipeline: for each of the four topics, identify
+    events, scrape their sources, and synthesise original stories in both
+    variant voices. Aims for 3 stories per topic; accepts fewer. Never pads."""
+    all_stories = []
+    for topic_name, topic_desc in COVERAGE_TOPICS:
+        topic_stories = []
+        used_headlines = []
+
+        for attempt in range(2):
+            if len(topic_stories) >= COVERAGE_STORIES_PER_TOPIC:
+                break
+            events = identify_coverage_events(topic_name, topic_desc, exclude_headlines=used_headlines)
+            if not events:
+                continue
+            for event in events:
+                if len(topic_stories) >= COVERAGE_STORIES_PER_TOPIC:
+                    break
+                if event['headline'] in used_headlines:
+                    continue
+                used_headlines.append(event['headline'])
+                story = await _build_coverage_story(event, topic_name)
+                if story:
+                    topic_stories.append(story)
+
+        if len(topic_stories) < COVERAGE_STORIES_PER_TOPIC:
+            logger.warning(
+                f"[COVERAGE] {topic_name}: only {len(topic_stories)}/{COVERAGE_STORIES_PER_TOPIC} stories after 2 attempts"
+            )
+        all_stories.extend(topic_stories)
+
+    logger.info(f"[COVERAGE] Generated {len(all_stories)} original stories across {len(COVERAGE_TOPICS)} topics")
+    return all_stories
 
 
 async def fetch_bias_stories() -> list:
@@ -1448,34 +1425,52 @@ def get_subscriber_emails() -> list:
     return list(emails)
 
 
-def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, briefing_id: str = "", variant: str = 'student') -> str:
+def build_newsletter_html(coverage_stories: list, bias_stories: list, date_str: str, briefing_id: str = "", variant: str = 'student') -> str:
     import html as _html
+    from briefing_voice import STUDENT_FRAME, TEACHER_FRAME
     base_url = "https://cronkite.education"
+    frame = STUDENT_FRAME if variant == 'student' else TEACHER_FRAME
     variant_kicker = "Student Briefing" if variant == 'student' else "Teacher Briefing"
     view_url = f"{base_url}/briefing/{briefing_id}" if briefing_id else f"{base_url}/briefing/latest"
+    writeup_key = 'writeup_student' if variant == 'student' else 'writeup_teacher'
 
-    # ── Section 1: Cronkite Coverage ─────────────────────────────────────────
+    # ── Section 1: Cronkite Coverage, original journalism by topic ───────────
     coverage_html = ""
-    for category, stories in categorised.items():
-        bullets = ""
-        for s in stories:
-            summary = s.get('summary') or 'Summary unavailable.'
-            bullets += f"""
-            <li style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f0ede8;">
+    for topic_name, _topic_desc in COVERAGE_TOPICS:
+        topic_stories = [s for s in coverage_stories if s.get('topic') == topic_name]
+        if not topic_stories:
+            continue
+
+        stories_html = ""
+        for s in topic_stories:
+            writeup = s.get(writeup_key) or ''
+            paras = ''.join(
+                f'<p style="font-size:12px;color:#57534e;line-height:1.6;margin:0 0 10px">{_html.escape(p.strip())}</p>'
+                for p in writeup.split('\n') if p.strip()
+            )
+            publications = [p for p in (s.get('source_publications') or []) if p]
+            attribution = (
+                f'<p style="font-size:10px;color:#a8a29e;margin:2px 0 0;font-style:italic">'
+                f'Synthesised from {_html.escape(", ".join(publications))}</p>'
+                if publications else ''
+            )
+            stories_html += f"""
+            <li style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #f0ede8;">
               <span style="font-family:Georgia,serif;font-size:14px;font-weight:600;
-                 color:#1c1917;line-height:1.4;display:block;margin-bottom:5px">
-                {s['title']}
+                 color:#1c1917;line-height:1.4;display:block;margin-bottom:6px">
+                {_html.escape(s.get('headline', ''))}
               </span>
-              <span style="font-size:12px;color:#57534e;line-height:1.5">{summary}</span>
+              {paras}
+              {attribution}
             </li>"""
 
         coverage_html += f"""
         <div style="margin-bottom:24px">
           <h3 style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
                color:#c41e3a;margin:0 0 12px;padding-bottom:6px;border-bottom:2px solid #c41e3a">
-            {category}
+            {topic_name}
           </h3>
-          <ul style="list-style:none;padding:0;margin:0">{bullets}</ul>
+          <ul style="list-style:none;padding:0;margin:0">{stories_html}</ul>
         </div>"""
 
     # ── Section 2: Business of Bias ──────────────────────────────────────────
@@ -1536,7 +1531,7 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Cronkite Daily Briefing — {date_str}</title>
+  <title>Cronkite Briefing, {date_str}</title>
 </head>
 <body style="margin:0;padding:0;background:#f8f7f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
   <div style="max-width:600px;margin:0 auto;padding:24px 16px">
@@ -1551,19 +1546,20 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, 
       <p style="font-size:13px;color:rgba(255,255,255,0.5);margin:0">{date_str}</p>
     </div>
 
-    <!-- Good morning -->
+    <!-- Intro -->
     <p style="font-size:14px;color:#44403c;line-height:1.65;margin-bottom:24px;padding:0 2px">
-      Good morning. Here is your Cronkite Daily Briefing — a neutral summary of today's top UK
-      stories across politics, economics, entertainment and national news, plus a look at the
-      most biased and sensational headlines of the morning.
+      {frame['intro']}
     </p>
 
     <!-- Section 1 -->
     <div style="background:#ffffff;border:1px solid #e8e4df;border-radius:12px;padding:24px 24px 10px;margin-bottom:20px">
       <h2 style="font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
-           color:#c41e3a;margin:0 0 20px;padding-bottom:10px;border-bottom:2px solid #f0ede8">
+           color:#c41e3a;margin:0 0 6px;padding-bottom:10px;border-bottom:2px solid #f0ede8">
         &#9632; Cronkite Coverage
       </h2>
+      <p style="font-size:12px;color:#78716c;margin:0 0 18px;line-height:1.5">
+        {frame['coverage_subtitle']}
+      </p>
       {coverage_html}
     </div>
 
@@ -1574,7 +1570,7 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, 
         &#9632; The Business of Bias
       </h2>
       <p style="font-size:12px;color:#78716c;margin:0 0 18px;line-height:1.5">
-        The five most biased or sensational headlines this morning, with AI-identified techniques.
+        {frame['bias_subtitle']}
       </p>
       {bias_html}
     </div>
@@ -1590,8 +1586,8 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, 
 
     <!-- Footer -->
     <div style="text-align:center;padding:16px 0;border-top:1px solid #e8e4df">
-      <p style="font-size:11px;color:#a8a29e;margin:0">
-        Powered by <strong style="color:#c41e3a">Cronkite</strong> &middot; Media literacy for UK schools
+      <p style="font-size:11px;color:#a8a29e;margin:0;line-height:1.6">
+        {frame['footer']}
       </p>
     </div>
 
@@ -1647,7 +1643,7 @@ def generate_story_writeup(story: dict, variant: str) -> str:
 
 # Day-scoped story cache so consecutive dry runs (and both variants of one real
 # send) are built from the SAME underlying stories and canonical scores.
-_briefing_story_cache: dict = {'date': None, 'categorised': None, 'bias_stories': None}
+_briefing_story_cache: dict = {'date': None, 'coverage_stories': None, 'bias_stories': None}
 
 
 async def _gather_briefing_stories(force_refresh: bool = False) -> tuple:
@@ -1657,38 +1653,39 @@ async def _gather_briefing_stories(force_refresh: bool = False) -> tuple:
     today = str(_date.today())
     if not force_refresh and _briefing_story_cache['date'] == today \
             and _briefing_story_cache['bias_stories'] is not None:
-        return _briefing_story_cache['categorised'], _briefing_story_cache['bias_stories']
+        return _briefing_story_cache['coverage_stories'], _briefing_story_cache['bias_stories']
 
-    categorised = fetch_categorised_stories()
+    coverage_stories = await generate_coverage_stories()
     bias_stories = await fetch_bias_stories()
     # Only cache a non-empty gather. A failed run (API outage, credit exhaustion,
     # feed failure) must not pin an empty briefing for the rest of the day.
-    if bias_stories or any(categorised.values()):
+    if bias_stories or coverage_stories:
         _briefing_story_cache.update({
-            'date': today, 'categorised': categorised, 'bias_stories': bias_stories,
+            'date': today, 'coverage_stories': coverage_stories, 'bias_stories': bias_stories,
         })
-    return categorised, bias_stories
+    return coverage_stories, bias_stories
 
 
 async def generate_daily_briefing(
     variant: str,
-    categorised: dict = None,
+    coverage_stories: list = None,
     bias_stories: list = None,
     briefing_id: str = "",
     date_str: str = "",
 ) -> str:
     """Build one variant ('student' or 'teacher') of the Daily Briefing HTML.
 
-    Story gathering and scoring are shared (day-cached) so both variants are
-    built from identical stories and identical canonical scores; only the
-    editorial voice of the write-ups differs."""
+    Story gathering, scoring and Coverage synthesis are shared (day-cached) so
+    both variants are built from identical stories and identical canonical
+    scores; only the editorial voice differs. Coverage stories already carry
+    both variant write-ups; bias stories get their variant write-up here."""
     from datetime import datetime
 
     if variant not in ('student', 'teacher'):
         raise ValueError(f"Unknown briefing variant: {variant}")
 
-    if categorised is None or bias_stories is None:
-        categorised, bias_stories = await _gather_briefing_stories()
+    if coverage_stories is None or bias_stories is None:
+        coverage_stories, bias_stories = await _gather_briefing_stories()
     if not date_str:
         date_str = datetime.now().strftime("%A, %d %B %Y")
 
@@ -1699,7 +1696,7 @@ async def generate_daily_briefing(
         story['writeup'] = generate_story_writeup(story, variant)
         voiced_stories.append(story)
 
-    return build_newsletter_html(categorised, voiced_stories, date_str, briefing_id, variant=variant)
+    return build_newsletter_html(coverage_stories, voiced_stories, date_str, briefing_id, variant=variant)
 
 
 def get_subscriber_cohorts() -> dict:
@@ -1752,7 +1749,7 @@ async def run_daily_briefing() -> int:
     logger.info("=== Daily Briefing job starting ===")
 
     # Gather ONCE so both variants share identical stories and identical scores
-    categorised, bias_stories = await _gather_briefing_stories(force_refresh=True)
+    coverage_stories, bias_stories = await _gather_briefing_stories(force_refresh=True)
 
     date_str = datetime.now().strftime("%A, %d %B %Y")
 
@@ -1763,7 +1760,7 @@ async def run_daily_briefing() -> int:
     for variant, briefing_id in variant_ids.items():
         variant_html[variant] = await generate_daily_briefing(
             variant,
-            categorised=categorised,
+            coverage_stories=coverage_stories,
             bias_stories=bias_stories,
             briefing_id=briefing_id,
             date_str=date_str,
@@ -1795,15 +1792,18 @@ async def run_daily_briefing() -> int:
     total = len(cohorts['student']) + len(cohorts['teacher'])
     logger.info(f"Sending Daily Briefing to {total} subscribers")
 
+    from briefing_voice import STUDENT_FRAME, TEACHER_FRAME
     resend.api_key = os.getenv('RESEND_API_KEY', '')
     sent = 0
     for variant in ('student', 'teacher'):
+        frame = STUDENT_FRAME if variant == 'student' else TEACHER_FRAME
+        subject = frame['subject'].format(date_str=date_str)
         for email in cohorts[variant]:
             try:
                 resend.Emails.send({
                     "from": "Cronkite <onboarding@resend.dev>",
                     "to": [email],
-                    "subject": f"Cronkite Daily Briefing — {date_str}",
+                    "subject": subject,
                     "html": variant_html[variant],
                 })
                 sent += 1
