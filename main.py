@@ -1258,8 +1258,11 @@ def fetch_categorised_stories() -> dict:
     return result
 
 
-def fetch_bias_stories() -> list:
-    """Actively hunt for biased UK content using Haiku + web_search. Returns up to 5 stories."""
+async def fetch_bias_stories() -> list:
+    """Actively hunt for biased UK content using Sonnet + web_search, then score each
+    candidate's REAL article body through the canonical pipeline (scrape_article_content
+    + score_article_combined). Stories that can't be canonically scored end-to-end are
+    dropped silently; fewer than 5 results is acceptable."""
     import anthropic as _anthropic
     from datetime import datetime
 
@@ -1328,54 +1331,80 @@ def fetch_bias_stories() -> list:
                         text += item.text
 
     # Parse JSON from response
-    from scoring import score_article_combined
-    stories = []
+    from scoring import score_article_combined, cache_article_score
+    raw_items = []
     try:
         start = text.find("[")
         end   = text.rfind("]") + 1
         if start >= 0 and end > start:
             raw_items = json.loads(text[start:end])
-            for item in raw_items[:5]:
-                source_url = item.get('url', '')
-                title = item.get('headline', '')
-                explanation = item.get('explanation', '')
-                scoring_text = f"Headline: {title}\n\nContext: {explanation}"
-
-                try:
-                    domain = (
-                        source_url.split('/')[2].replace('www.', '')
-                        if source_url.startswith('http')
-                        else item.get('source', '')
-                    )
-                    combined = score_article_combined(
-                        url=source_url,
-                        title=title,
-                        content=scoring_text,
-                        source=domain,
-                        author='',
-                    )
-                    canonical_bias = combined['bias']
-                    canonical_credibility = combined['credibility']
-                except Exception as e:
-                    logger.warning(f"[BIAS] Canonical scoring failed for '{title}': {e}")
-                    canonical_bias = {'score': 0, 'label': 'centre', 'components': {}}
-                    canonical_credibility = {'score': 50, 'components': {}}
-
-                stories.append({
-                    'title':           title,
-                    'source_name':     item.get('source', ''),
-                    'url':             source_url,
-                    'bias_score':      canonical_bias['score'],
-                    'bias_label':      canonical_bias['label'],
-                    'credibility_score': canonical_credibility['score'],
-                    'technique':       item.get('technique', ''),
-                    'bias_explanation': item.get('explanation', ''),
-                    'snippet':         '',
-                })
     except Exception as e:
         logger.error(f"fetch_bias_stories JSON parse failed: {e}\nRaw text: {text[:500]}")
 
-    logger.info(f"Bias section: {len(stories)} stories found via web search")
+    # Canonical scoring pass: scrape each candidate's real article body and run
+    # the Truth Formula on it. Drop anything that fails end-to-end. Do not pad.
+    stories = []
+    for item in raw_items[:5]:
+        url = item.get('url', '')
+        if not url:
+            logger.info("[BIAS] Skipping story with no URL")
+            continue
+
+        try:
+            scrape_result = await scrape_article_content(url)
+            if not scrape_result['success']:
+                logger.info(f"[BIAS] Skipping {url}: {scrape_result['error']}")
+                continue
+
+            title = scrape_result['title'] or item.get('headline', '')
+            source = scrape_result['source'] or item.get('source', '')
+
+            combined = score_article_combined(
+                url=url,
+                title=title,
+                content=scrape_result['content'],
+                source=source,
+                author='',
+            )
+            if combined.get('analysis_failed'):
+                logger.info(f"[BIAS] Skipping {url}: analysis_failed=True")
+                continue
+
+            credibility = combined['credibility']
+            credibility['rationale'] = combined.get('rationale', {})
+
+            # Cache the canonical score so any subsequent Reader read of the same
+            # URL returns exactly the score shown in the briefing.
+            try:
+                cache_article_score(
+                    url=url,
+                    title=title,
+                    source=source,
+                    credibility=credibility,
+                    bias=combined['bias'],
+                    summary=scrape_result['content'][:500],
+                )
+            except Exception as e:
+                logger.warning(f"[BIAS] Cache write failed for {url}: {e}")
+
+            stories.append({
+                'title':             title,
+                'source_name':       source,
+                'url':               url,
+                'bias_score':        combined['bias']['score'],
+                'bias_label':        combined['bias']['label'],
+                'credibility_score': credibility['score'],
+                'credibility_brief': combined.get('rationale', {}).get('credibility_brief', ''),
+                'bias_brief':        combined.get('rationale', {}).get('bias_brief', ''),
+                'technique':         item.get('technique', ''),
+                'bias_explanation':  item.get('explanation', ''),
+                'article_body':      scrape_result['content'],
+            })
+        except Exception as e:
+            logger.warning(f"[BIAS] Canonical scoring failed for {url}: {e}")
+            continue
+
+    logger.info(f"Bias section: {len(stories)} stories canonically scored")
     return stories
 
 
@@ -1419,8 +1448,10 @@ def get_subscriber_emails() -> list:
     return list(emails)
 
 
-def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, briefing_id: str = "") -> str:
+def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, briefing_id: str = "", variant: str = 'student') -> str:
+    import html as _html
     base_url = "https://cronkite.education"
+    variant_kicker = "Student Briefing" if variant == 'student' else "Teacher Briefing"
     view_url = f"{base_url}/briefing/{briefing_id}" if briefing_id else f"{base_url}/briefing/latest"
 
     # ── Section 1: Cronkite Coverage ─────────────────────────────────────────
@@ -1465,6 +1496,16 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, 
             if technique else ""
         )
         score_str = f"+{score}" if score > 0 else str(score)
+
+        # Story write-up in the Cronkite voice (variant-specific, generated by
+        # generate_story_writeup). Falls back to the one-line explanation for
+        # any story that predates the voice pipeline.
+        writeup = s.get('writeup') or s.get('bias_explanation') or 'Bias analysis unavailable.'
+        writeup_html = ''.join(
+            f'<p style="font-size:12px;color:#78716c;line-height:1.6;margin:0 0 10px">{_html.escape(para.strip())}</p>'
+            for para in writeup.split('\n') if para.strip()
+        )
+
         bias_html += f"""
         <div style="display:flex;gap:12px;margin-bottom:16px;padding-bottom:16px;
              border-bottom:1px solid #f0ede8;">
@@ -1486,9 +1527,7 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, 
                color:#1c1917;text-decoration:none;line-height:1.4;display:block;margin-bottom:4px">
               {s['title']}
             </a>
-            <span style="font-size:12px;color:#78716c;line-height:1.5">
-              {s.get('bias_explanation','Bias analysis unavailable.')}
-            </span>
+            {writeup_html}
           </div>
         </div>"""
 
@@ -1505,7 +1544,7 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, 
     <!-- Header -->
     <div style="background:#1c1917;border-radius:12px;padding:28px 28px 24px;margin-bottom:20px;text-align:center">
       <div style="font-size:11px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;
-           color:#c41e3a;margin-bottom:8px">Daily Briefing</div>
+           color:#c41e3a;margin-bottom:8px">{variant_kicker}</div>
       <h1 style="font-family:Georgia,serif;font-size:28px;font-weight:700;color:white;margin:0 0 6px;letter-spacing:-0.5px">
         Cronkite
       </h1>
@@ -1561,13 +1600,146 @@ def build_newsletter_html(categorised: dict, bias_stories: list, date_str: str, 
 </html>"""
 
 
+def generate_story_writeup(story: dict, variant: str) -> str:
+    """Generate a Cronkite-voice write-up for one canonically scored bias story.
+
+    variant: 'student' or 'teacher'. Temperature 0.3: some editorial variation is
+    acceptable, but the canonical scores interpolated into the prompt never vary.
+    Falls back to the rubric rationale briefs on failure so the newsletter never
+    renders an empty story body."""
+    from briefing_voice import STUDENT_STORY_PROMPT, TEACHER_STORY_PROMPT
+
+    template = STUDENT_STORY_PROMPT if variant == 'student' else TEACHER_STORY_PROMPT
+    prompt = template.format(
+        title=story.get('title', ''),
+        source=story.get('source_name', ''),
+        url=story.get('url', ''),
+        credibility_score=story.get('credibility_score', 50),
+        bias_label=story.get('bias_label', 'centre'),
+        bias_score=int(story.get('bias_score', 0)),
+        credibility_brief=story.get('credibility_brief', ''),
+        bias_brief=story.get('bias_brief', ''),
+        article_body_excerpt=(story.get('article_body') or '')[:3000],
+    )
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1024,
+            temperature=0.3,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        writeup = "".join(
+            block.text for block in response.content
+            if getattr(block, 'type', None) == 'text'
+        ).strip()
+        if writeup:
+            return writeup
+        logger.warning(f"[BRIEFING] Empty write-up for {story.get('url', '')}")
+    except Exception as e:
+        logger.warning(f"[BRIEFING] Write-up generation failed for {story.get('url', '')}: {e}")
+
+    fallback = ' '.join(filter(None, [story.get('credibility_brief', ''), story.get('bias_brief', '')]))
+    return fallback or story.get('bias_explanation', '')
+
+
+# Day-scoped story cache so consecutive dry runs (and both variants of one real
+# send) are built from the SAME underlying stories and canonical scores.
+_briefing_story_cache: dict = {'date': None, 'categorised': None, 'bias_stories': None}
+
+
+async def _gather_briefing_stories(force_refresh: bool = False) -> tuple:
+    """Fetch categorised coverage + canonically scored bias stories, once per day.
+    Returns (categorised, bias_stories)."""
+    from datetime import date as _date
+    today = str(_date.today())
+    if not force_refresh and _briefing_story_cache['date'] == today \
+            and _briefing_story_cache['bias_stories'] is not None:
+        return _briefing_story_cache['categorised'], _briefing_story_cache['bias_stories']
+
+    categorised = fetch_categorised_stories()
+    bias_stories = await fetch_bias_stories()
+    _briefing_story_cache.update({
+        'date': today, 'categorised': categorised, 'bias_stories': bias_stories,
+    })
+    return categorised, bias_stories
+
+
+async def generate_daily_briefing(
+    variant: str,
+    categorised: dict = None,
+    bias_stories: list = None,
+    briefing_id: str = "",
+    date_str: str = "",
+) -> str:
+    """Build one variant ('student' or 'teacher') of the Daily Briefing HTML.
+
+    Story gathering and scoring are shared (day-cached) so both variants are
+    built from identical stories and identical canonical scores; only the
+    editorial voice of the write-ups differs."""
+    from datetime import datetime
+
+    if variant not in ('student', 'teacher'):
+        raise ValueError(f"Unknown briefing variant: {variant}")
+
+    if categorised is None or bias_stories is None:
+        categorised, bias_stories = await _gather_briefing_stories()
+    if not date_str:
+        date_str = datetime.now().strftime("%A, %d %B %Y")
+
+    # Voice pass: copy each story so the shared cached dicts stay variant-neutral
+    voiced_stories = []
+    for s in bias_stories:
+        story = dict(s)
+        story['writeup'] = generate_story_writeup(story, variant)
+        voiced_stories.append(story)
+
+    return build_newsletter_html(categorised, voiced_stories, date_str, briefing_id, variant=variant)
+
+
+def get_subscriber_cohorts() -> dict:
+    """Split subscribers by audience. Same two sources as get_subscriber_emails:
+    the users table (teachers) and assignments.student_email (students). An
+    address appearing in both is treated as a teacher."""
+    from supabase import create_client
+
+    url = os.getenv('SUPABASE_URL')
+    key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY')
+    if not url or not key:
+        logger.error("get_subscriber_cohorts: Supabase not configured")
+        return {'student': [], 'teacher': []}
+
+    svc = create_client(url, key)
+    teachers: set = set()
+    students: set = set()
+
+    try:
+        result = svc.table('users').select('email').execute()
+        teachers = {row['email'] for row in (result.data or []) if row.get('email')}
+    except Exception as e:
+        logger.error(f"Cohort users query failed: {e}")
+
+    try:
+        result = svc.table('assignments').select('student_email').execute()
+        students = {row['student_email'] for row in (result.data or []) if row.get('student_email')}
+    except Exception as e:
+        logger.error(f"Cohort assignments query failed: {e}")
+
+    students -= teachers
+    logger.info(f"Cohorts: {len(students)} students, {len(teachers)} teachers")
+    return {'student': sorted(students), 'teacher': sorted(teachers)}
+
+
 # ── Latest briefing stored in memory ─────────────────────────────────────────
 _latest_briefing_html: str = ""
 _latest_briefing_date: str = ""
 
 
 async def run_daily_briefing() -> int:
-    """Fetch categorised stories + bias stories, build newsletter, send to subscribers."""
+    """Gather stories once, build student + teacher variants from the same stories
+    and canonical scores, persist both, send each cohort its variant."""
     global _latest_briefing_html, _latest_briefing_date
     import resend
     import uuid
@@ -1576,53 +1748,66 @@ async def run_daily_briefing() -> int:
 
     logger.info("=== Daily Briefing job starting ===")
 
-    categorised  = fetch_categorised_stories()
-    bias_stories = fetch_bias_stories()
+    # Gather ONCE so both variants share identical stories and identical scores
+    categorised, bias_stories = await _gather_briefing_stories(force_refresh=True)
 
-    # Generate UUID before building HTML so the "View Full Briefing" link can use it
-    briefing_id = str(uuid.uuid4())
     date_str = datetime.now().strftime("%A, %d %B %Y")
-    html = build_newsletter_html(categorised, bias_stories, date_str, briefing_id)
 
-    # Store in memory as convenience fallback
-    _latest_briefing_html = html
+    # One briefing row per variant so each email's "View Full Briefing" link
+    # opens the version written for that audience
+    variant_ids = {'student': str(uuid.uuid4()), 'teacher': str(uuid.uuid4())}
+    variant_html = {}
+    for variant, briefing_id in variant_ids.items():
+        variant_html[variant] = await generate_daily_briefing(
+            variant,
+            categorised=categorised,
+            bias_stories=bias_stories,
+            briefing_id=briefing_id,
+            date_str=date_str,
+        )
+
+    # Store student variant in memory as convenience fallback
+    _latest_briefing_html = variant_html['student']
     _latest_briefing_date = date_str
 
-    # Persist to Supabase daily_briefings table
+    # Persist both variants to Supabase daily_briefings table
     try:
         svc_url = os.getenv('SUPABASE_URL', '')
         svc_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
         if svc_url and svc_key:
             svc = create_client(svc_url, svc_key)
-            svc.table('daily_briefings').insert({
-                'id':           briefing_id,
-                'date':         date_type.today().isoformat(),
-                'html_content': html,
-            }).execute()
-            logger.info(f"Briefing saved to Supabase: {briefing_id}")
+            for variant, briefing_id in variant_ids.items():
+                svc.table('daily_briefings').insert({
+                    'id':           briefing_id,
+                    'date':         date_type.today().isoformat(),
+                    'html_content': variant_html[variant],
+                }).execute()
+                logger.info(f"Briefing saved to Supabase: {briefing_id} ({variant})")
         else:
             logger.warning("Supabase not configured — briefing not persisted")
     except Exception as e:
         logger.error(f"Failed to save briefing to Supabase: {e}")
 
-    emails = get_subscriber_emails()
-    logger.info(f"Sending Daily Briefing to {len(emails)} subscribers")
+    cohorts = get_subscriber_cohorts()
+    total = len(cohorts['student']) + len(cohorts['teacher'])
+    logger.info(f"Sending Daily Briefing to {total} subscribers")
 
     resend.api_key = os.getenv('RESEND_API_KEY', '')
     sent = 0
-    for email in emails:
-        try:
-            resend.Emails.send({
-                "from": "Cronkite <onboarding@resend.dev>",
-                "to": [email],
-                "subject": f"Cronkite Daily Briefing — {date_str}",
-                "html": html,
-            })
-            sent += 1
-        except Exception as e:
-            logger.error(f"Failed to send briefing to {email}: {e}")
+    for variant in ('student', 'teacher'):
+        for email in cohorts[variant]:
+            try:
+                resend.Emails.send({
+                    "from": "Cronkite <onboarding@resend.dev>",
+                    "to": [email],
+                    "subject": f"Cronkite Daily Briefing — {date_str}",
+                    "html": variant_html[variant],
+                })
+                sent += 1
+            except Exception as e:
+                logger.error(f"Failed to send briefing to {email}: {e}")
 
-    logger.info(f"Daily Briefing complete — sent to {sent}/{len(emails)} subscribers")
+    logger.info(f"Daily Briefing complete — sent to {sent}/{total} subscribers")
     return sent
 
 
@@ -1705,8 +1890,14 @@ async def briefing_latest():
 async def api_briefing_send(
     request: Request,
     secret: str | None = None,
+    variant: str | None = None,
+    dry_run: bool = False,
 ):
-    """Manually trigger the Daily Briefing. Auth via Bearer token or ?secret=."""
+    """Manually trigger the Daily Briefing. Auth via Bearer token or ?secret=.
+
+    dry_run=true generates the requested variant's HTML and returns it in the
+    response instead of sending any email. Stories are day-cached, so student
+    and teacher dry runs on the same day share the same underlying stories."""
     if secret != "cronkite2026":
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
@@ -1723,6 +1914,10 @@ async def api_briefing_send(
             raise HTTPException(status_code=401, detail="Unauthorised")
     import traceback
     try:
+        if dry_run:
+            v = variant if variant in ('student', 'teacher') else 'student'
+            html = await generate_daily_briefing(v)
+            return {"status": "dry_run", "variant": v, "html": html}
         sent = await run_daily_briefing()
         return {"status": "sent", "subscribers": sent}
     except Exception as exc:
