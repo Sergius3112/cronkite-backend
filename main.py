@@ -1661,9 +1661,12 @@ async def _gather_briefing_stories(force_refresh: bool = False) -> tuple:
 
     categorised = fetch_categorised_stories()
     bias_stories = await fetch_bias_stories()
-    _briefing_story_cache.update({
-        'date': today, 'categorised': categorised, 'bias_stories': bias_stories,
-    })
+    # Only cache a non-empty gather. A failed run (API outage, credit exhaustion,
+    # feed failure) must not pin an empty briefing for the rest of the day.
+    if bias_stories or any(categorised.values()):
+        _briefing_story_cache.update({
+            'date': today, 'categorised': categorised, 'bias_stories': bias_stories,
+        })
     return categorised, bias_stories
 
 
