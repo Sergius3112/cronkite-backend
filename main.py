@@ -41,8 +41,11 @@ async def startup_check():
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from datetime import datetime as _dt
         _scheduler = AsyncIOScheduler(timezone="Europe/London")
-        # PAUSED — re-enable when pilot schools are onboarded
-        # _scheduler.add_job(run_daily_briefing, 'cron', hour=8, minute=30)
+        # Paused. To enable when pilot schools are onboarded:
+        # - Uncomment the add_job line below
+        # - Confirm briefing_jobs table exists (migration 20260707_briefing_jobs.sql)
+        # - Confirm at least one test manual trigger has completed status='complete' recently
+        # _scheduler.add_job(_scheduler_trigger_briefing, 'cron', hour=8, minute=30)
         _scheduler.add_job(
             run_monitoring_cycle,
             'interval',
@@ -1146,11 +1149,15 @@ def _compose_coverage_story(event: dict, topic_name: str, sources: list, variant
         return ''
 
 
-async def _build_coverage_story(event: dict, topic_name: str) -> dict:
+async def _build_coverage_story(event: dict, topic_name: str, job_id: str = None) -> dict:
     """Scrape an event's sources and synthesise both variant write-ups.
     Returns the story record, or None if the event can't be built end-to-end."""
     import asyncio
 
+    await _update_job_progress(
+        job_id, 'scraping',
+        f"{topic_name}: scraping {len(event['source_urls'])} sources for \"{event['headline']}\"",
+    )
     scrape_results = await asyncio.gather(
         *(scrape_article_content(u) for u in event['source_urls']),
         return_exceptions=True,
@@ -1174,6 +1181,10 @@ async def _build_coverage_story(event: dict, topic_name: str) -> dict:
         logger.info(f"[COVERAGE] Dropping event '{event['headline']}': only {len(sources)} scrapeable sources")
         return None
 
+    await _update_job_progress(
+        job_id, 'synthesis',
+        f"{topic_name}: synthesising \"{event['headline']}\" in both voices",
+    )
     writeup_student, writeup_teacher = await asyncio.gather(
         asyncio.to_thread(_compose_coverage_story, event, topic_name, sources, 'student'),
         asyncio.to_thread(_compose_coverage_story, event, topic_name, sources, 'teacher'),
@@ -1200,7 +1211,7 @@ async def _build_coverage_story(event: dict, topic_name: str) -> dict:
     }
 
 
-async def generate_coverage_stories() -> list:
+async def generate_coverage_stories(job_id: str = None) -> list:
     """Full Cronkite Coverage pipeline: for each of the four topics, identify
     events, scrape their sources, and synthesise original stories in both
     variant voices. Aims for 3 stories per topic; accepts fewer. Never pads."""
@@ -1212,6 +1223,7 @@ async def generate_coverage_stories() -> list:
         for attempt in range(2):
             if len(topic_stories) >= COVERAGE_STORIES_PER_TOPIC:
                 break
+            await _update_job_progress(job_id, 'events', f"Identifying newsworthy events: {topic_name}")
             events = identify_coverage_events(topic_name, topic_desc, exclude_headlines=used_headlines)
             if not events:
                 continue
@@ -1221,7 +1233,7 @@ async def generate_coverage_stories() -> list:
                 if event['headline'] in used_headlines:
                     continue
                 used_headlines.append(event['headline'])
-                story = await _build_coverage_story(event, topic_name)
+                story = await _build_coverage_story(event, topic_name, job_id=job_id)
                 if story:
                     topic_stories.append(story)
 
@@ -1235,7 +1247,7 @@ async def generate_coverage_stories() -> list:
     return all_stories
 
 
-async def fetch_bias_stories() -> list:
+async def fetch_bias_stories(job_id: str = None) -> list:
     """Actively hunt for biased UK content using Sonnet + web_search, then score each
     candidate's REAL article body through the canonical pipeline (scrape_article_content
     + score_article_combined). Stories that can't be canonically scored end-to-end are
@@ -1282,6 +1294,7 @@ async def fetch_bias_stories() -> list:
         f"result 4 = Left, result 5 = Centre. Different sources for all 5."
     )
 
+    await _update_job_progress(job_id, 'bias', 'Searching for biased UK content')
     client = _anthropic.Anthropic(api_key=api_key)
     try:
         response = client.messages.create(
@@ -1321,12 +1334,17 @@ async def fetch_bias_stories() -> list:
     # Canonical scoring pass: scrape each candidate's real article body and run
     # the Truth Formula on it. Drop anything that fails end-to-end. Do not pad.
     stories = []
-    for item in raw_items[:5]:
+    candidates = raw_items[:5]
+    for i, item in enumerate(candidates, 1):
         url = item.get('url', '')
         if not url:
             logger.info("[BIAS] Skipping story with no URL")
             continue
 
+        await _update_job_progress(
+            job_id, 'bias',
+            f"Canonically scoring bias story {i} of {len(candidates)}: {item.get('source', '')}",
+        )
         try:
             scrape_result = await scrape_article_content(url)
             if not scrape_result['success']:
@@ -1646,17 +1664,18 @@ def generate_story_writeup(story: dict, variant: str) -> str:
 _briefing_story_cache: dict = {'date': None, 'coverage_stories': None, 'bias_stories': None}
 
 
-async def _gather_briefing_stories(force_refresh: bool = False) -> tuple:
+async def _gather_briefing_stories(force_refresh: bool = False, job_id: str = None) -> tuple:
     """Fetch categorised coverage + canonically scored bias stories, once per day.
     Returns (categorised, bias_stories)."""
     from datetime import date as _date
     today = str(_date.today())
     if not force_refresh and _briefing_story_cache['date'] == today \
             and _briefing_story_cache['bias_stories'] is not None:
+        await _update_job_progress(job_id, 'events', "Reusing today's cached stories")
         return _briefing_story_cache['coverage_stories'], _briefing_story_cache['bias_stories']
 
-    coverage_stories = await generate_coverage_stories()
-    bias_stories = await fetch_bias_stories()
+    coverage_stories = await generate_coverage_stories(job_id=job_id)
+    bias_stories = await fetch_bias_stories(job_id=job_id)
     # Only cache a non-empty gather. A failed run (API outage, credit exhaustion,
     # feed failure) must not pin an empty briefing for the rest of the day.
     if bias_stories or coverage_stories:
@@ -1672,6 +1691,7 @@ async def generate_daily_briefing(
     bias_stories: list = None,
     briefing_id: str = "",
     date_str: str = "",
+    job_id: str = None,
 ) -> str:
     """Build one variant ('student' or 'teacher') of the Daily Briefing HTML.
 
@@ -1685,11 +1705,15 @@ async def generate_daily_briefing(
         raise ValueError(f"Unknown briefing variant: {variant}")
 
     if coverage_stories is None or bias_stories is None:
-        coverage_stories, bias_stories = await _gather_briefing_stories()
+        coverage_stories, bias_stories = await _gather_briefing_stories(job_id=job_id)
     if not date_str:
         date_str = datetime.now().strftime("%A, %d %B %Y")
 
     # Voice pass: copy each story so the shared cached dicts stay variant-neutral
+    await _update_job_progress(
+        job_id, 'synthesis',
+        f"Writing {variant} voice for {len(bias_stories)} Business of Bias stories",
+    )
     voiced_stories = []
     for s in bias_stories:
         story = dict(s)
@@ -1741,7 +1765,6 @@ async def run_daily_briefing() -> int:
     """Gather stories once, build student + teacher variants from the same stories
     and canonical scores, persist both, send each cohort its variant."""
     global _latest_briefing_html, _latest_briefing_date
-    import resend
     import uuid
     from datetime import datetime, date as date_type
     from supabase import create_client
@@ -1788,11 +1811,20 @@ async def run_daily_briefing() -> int:
     except Exception as e:
         logger.error(f"Failed to save briefing to Supabase: {e}")
 
+    sent = _send_briefing_emails(variant_html, date_str)
+    logger.info(f"Daily Briefing complete — sent to {sent} subscribers")
+    return sent
+
+
+def _send_briefing_emails(variant_html: dict, date_str: str) -> int:
+    """Send each cohort its variant via Resend. Returns the number sent."""
+    import resend
+    from briefing_voice import STUDENT_FRAME, TEACHER_FRAME
+
     cohorts = get_subscriber_cohorts()
     total = len(cohorts['student']) + len(cohorts['teacher'])
     logger.info(f"Sending Daily Briefing to {total} subscribers")
 
-    from briefing_voice import STUDENT_FRAME, TEACHER_FRAME
     resend.api_key = os.getenv('RESEND_API_KEY', '')
     sent = 0
     for variant in ('student', 'teacher'):
@@ -1810,8 +1842,215 @@ async def run_daily_briefing() -> int:
             except Exception as e:
                 logger.error(f"Failed to send briefing to {email}: {e}")
 
-    logger.info(f"Daily Briefing complete — sent to {sent}/{total} subscribers")
+    logger.info(f"Briefing emails: {sent}/{total} sent")
     return sent
+
+
+# ── Briefing jobs: background generation + poll endpoint (change set 3.0.6) ───
+# Generation takes 12-20 minutes, longer than the Railway edge proxy allows a
+# single HTTP request. The trigger endpoint creates a briefing_jobs row and
+# schedules _run_briefing_job on the event loop (same fire-and-forget pattern
+# as /api/monitoring/run); clients poll /api/briefing/status/{job_id}.
+
+def _jobs_supabase():
+    """Service client for briefing_jobs bookkeeping, or None if unconfigured."""
+    url = os.getenv('SUPABASE_URL', '')
+    key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+    if not url or not key:
+        return None
+    from supabase import create_client
+    return create_client(url, key)
+
+
+async def _update_job_progress(job_id: str, stage: str, detail: str):
+    """Best-effort progress write. job_id=None means the caller is running
+    outside the job system; generation must never fail because of this."""
+    if not job_id:
+        return
+    try:
+        svc = _jobs_supabase()
+        if svc is None:
+            return
+        svc.table('briefing_jobs').update({
+            'progress_stage': stage,
+            'progress_detail': detail,
+        }).eq('id', job_id).execute()
+    except Exception as e:
+        logger.warning(f"[BRIEFING-JOB] Progress update failed for {job_id}: {e}")
+
+
+async def _run_briefing_job(job_id: str):
+    """Background worker for one briefing_jobs row: gather once (day-cached, so
+    a retry after a failed job reuses the day's work), build both variants,
+    persist them, optionally email the cohorts. Owns all status transitions."""
+    global _latest_briefing_html, _latest_briefing_date
+    import traceback
+    import uuid
+    from datetime import datetime, timezone, date as date_type
+
+    def _now() -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    svc = _jobs_supabase()
+    if svc is None:
+        logger.error(f"[BRIEFING-JOB] {job_id}: Supabase not configured — job cannot run")
+        return
+
+    try:
+        row = svc.table('briefing_jobs').select('*').eq('id', job_id).single().execute()
+        job = row.data or {}
+    except Exception as e:
+        logger.error(f"[BRIEFING-JOB] {job_id}: could not load job row: {e}")
+        return
+    send_after_complete = bool(job.get('send_after_complete'))
+    dry_run = bool(job.get('dry_run'))
+
+    stage = 'events'
+    try:
+        svc.table('briefing_jobs').update({
+            'status': 'running',
+            'started_at': _now(),
+            'progress_stage': 'events',
+            'progress_detail': 'Identifying newsworthy events',
+        }).eq('id', job_id).execute()
+        logger.info(
+            f"[BRIEFING-JOB] {job_id}: starting "
+            f"(dry_run={dry_run}, send_after_complete={send_after_complete})"
+        )
+
+        coverage_stories, bias_stories = await _gather_briefing_stories(job_id=job_id)
+        if not coverage_stories and not bias_stories:
+            raise RuntimeError(
+                "Gather produced no stories (API outage or feed failure) — briefing not persisted"
+            )
+
+        stage = 'synthesis'
+        date_str = datetime.now().strftime("%A, %d %B %Y")
+        variant_ids = {'student': str(uuid.uuid4()), 'teacher': str(uuid.uuid4())}
+        variant_html = {}
+        for variant, briefing_id in variant_ids.items():
+            variant_html[variant] = await generate_daily_briefing(
+                variant,
+                coverage_stories=coverage_stories,
+                bias_stories=bias_stories,
+                briefing_id=briefing_id,
+                date_str=date_str,
+                job_id=job_id,
+            )
+
+        _latest_briefing_html = variant_html['student']
+        _latest_briefing_date = date_str
+
+        # Persist both variants (dry runs included: the job result is retrieved
+        # via these ids; dry_run only means no email is ever sent)
+        for variant, briefing_id in variant_ids.items():
+            svc.table('daily_briefings').insert({
+                'id':           briefing_id,
+                'date':         date_type.today().isoformat(),
+                'html_content': variant_html[variant],
+            }).execute()
+            logger.info(f"[BRIEFING-JOB] {job_id}: briefing saved {briefing_id} ({variant})")
+
+        sent = None
+        if send_after_complete and not dry_run:
+            stage = 'sending'
+            await _update_job_progress(job_id, 'sending', 'Emailing student and teacher cohorts')
+            sent = _send_briefing_emails(variant_html, date_str)
+
+        stage = 'done'
+        svc.table('briefing_jobs').update({
+            'status': 'complete',
+            'completed_at': _now(),
+            'progress_stage': 'done',
+            'progress_detail': (
+                f'Sent to {sent} subscribers' if sent is not None else 'Briefing generated (not sent)'
+            ),
+            'student_briefing_id': variant_ids['student'],
+            'teacher_briefing_id': variant_ids['teacher'],
+        }).eq('id', job_id).execute()
+        logger.info(f"[BRIEFING-JOB] {job_id}: complete")
+
+    except Exception as exc:
+        logger.error(f"[BRIEFING-JOB] {job_id}: failed at stage '{stage}': {traceback.format_exc()}")
+        try:
+            svc.table('briefing_jobs').update({
+                'status': 'failed',
+                'completed_at': _now(),
+                'error_stage': stage,
+                'error_message': str(exc),
+            }).eq('id', job_id).execute()
+        except Exception as e2:
+            logger.error(f"[BRIEFING-JOB] {job_id}: could not record failure: {e2}")
+
+
+def _start_briefing_job(triggered_by: str, send_after_complete: bool, dry_run: bool) -> tuple:
+    """Create a briefing_jobs row and schedule the worker on the event loop.
+    Returns (job, existing): job on success, existing when an unfinished job
+    already holds the single-job lock. Must be called from the running loop."""
+    import asyncio
+    from datetime import datetime, timezone
+
+    svc = _jobs_supabase()
+    if svc is None:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+
+    if triggered_by not in ('manual', 'scheduler', 'api'):
+        triggered_by = 'api'
+
+    try:
+        existing = svc.table('briefing_jobs') \
+            .select('id, status, triggered_at, started_at') \
+            .in_('status', ['queued', 'running']).execute()
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"briefing_jobs unavailable (run migration 20260707_briefing_jobs.sql?): {e}",
+        )
+    if existing.data:
+        existing_job = existing.data[0]
+        # A running job that started >30 min ago outlived the worst-case run.
+        # That is a bug to investigate via SQL, not something to auto-clean.
+        started = existing_job.get('started_at') or existing_job.get('triggered_at')
+        try:
+            age_min = (
+                datetime.now(timezone.utc)
+                - datetime.fromisoformat(started.replace('Z', '+00:00'))
+            ).total_seconds() / 60
+            if age_min > 30:
+                logger.warning(
+                    f"[BRIEFING-JOB] Unfinished job {existing_job['id']} is {age_min:.0f} min old "
+                    f"(status={existing_job['status']}) — likely stale, investigate manually"
+                )
+        except Exception:
+            pass
+        return None, existing_job
+
+    inserted = svc.table('briefing_jobs').insert({
+        'status': 'queued',
+        'triggered_by': triggered_by,
+        'send_after_complete': send_after_complete,
+        'dry_run': dry_run,
+    }).execute()
+    job = inserted.data[0]
+    asyncio.create_task(_run_briefing_job(job['id']))
+    logger.info(f"[BRIEFING-JOB] Created job {job['id']} (triggered_by={triggered_by})")
+    return job, None
+
+
+async def _scheduler_trigger_briefing():
+    """08:30 scheduler entry point (currently PAUSED — see startup). Creates a
+    real-send briefing job through the same guarded path as /api/briefing/trigger."""
+    try:
+        job, existing = _start_briefing_job(
+            triggered_by='scheduler', send_after_complete=True, dry_run=False,
+        )
+        if existing:
+            logger.warning(
+                f"[BRIEFING-JOB] Scheduler trigger skipped — job {existing['id']} "
+                f"already {existing['status']}"
+            )
+    except Exception as e:
+        logger.error(f"[BRIEFING-JOB] Scheduler trigger failed: {e}")
 
 
 def _expand_briefing_html(html: str) -> str:
@@ -1889,43 +2128,108 @@ async def briefing_latest():
     return HTMLResponse(content=_NO_BRIEFING_HTML, status_code=200)
 
 
+def _authorise_briefing_request(request: Request, secret: str | None):
+    """Same auth as the pre-3.0.6 /api/briefing/send: shared secret or a valid
+    Supabase Bearer token."""
+    if secret == "cronkite2026":
+        return
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorised")
+    token = auth_header.split(" ", 1)[1].strip()
+    try:
+        supa = get_supabase()
+        res = supa.auth.get_user(token)
+        if not res or not res.user:
+            raise HTTPException(status_code=401, detail="Unauthorised")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Unauthorised")
+
+
+def _briefing_trigger_response(triggered_by: str, send_after_complete: bool, dry_run: bool):
+    job, existing = _start_briefing_job(triggered_by, send_after_complete, dry_run)
+    if existing:
+        return JSONResponse({
+            "error": "briefing generation already in progress",
+            "existing_job_id": existing['id'],
+            "poll_url": f"/api/briefing/status/{existing['id']}",
+        }, status_code=409)
+    return JSONResponse({
+        "job_id": job['id'],
+        "status": "queued",
+        "poll_url": f"/api/briefing/status/{job['id']}",
+    }, status_code=202)
+
+
+@app.post("/api/briefing/trigger")
+async def api_briefing_trigger(
+    request: Request,
+    secret: str | None = None,
+    send_after_complete: bool = False,
+    dry_run: bool = False,
+    triggered_by: str = 'api',
+):
+    """Trigger Daily Briefing generation as a background job; returns 202 with
+    a job_id immediately. Poll /api/briefing/status/{job_id} for progress.
+    Both variants are always generated. dry_run=true means never email;
+    send_after_complete=true emails the cohorts once generation succeeds."""
+    _authorise_briefing_request(request, secret)
+    return _briefing_trigger_response(triggered_by, send_after_complete, dry_run)
+
+
+@app.get("/api/briefing/status/{job_id}")
+async def api_briefing_status(job_id: str):
+    """Poll a briefing job. No auth: job ids are unguessable UUIDs; unknown or
+    malformed ids return 404 to avoid enumeration."""
+    svc = _jobs_supabase()
+    if svc is None:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    try:
+        result = svc.table('briefing_jobs').select('*').eq('id', job_id).single().execute()
+        job = result.data
+    except Exception:
+        job = None
+    if not job:
+        raise HTTPException(status_code=404, detail="Unknown job")
+
+    error = None
+    if job['status'] == 'failed':
+        error = {"stage": job.get('error_stage'), "message": job.get('error_message')}
+    return JSONResponse({
+        "job_id": job['id'],
+        "status": job['status'],
+        "triggered_at": job.get('triggered_at'),
+        "started_at": job.get('started_at'),
+        "completed_at": job.get('completed_at'),
+        "progress": {
+            "stage": job.get('progress_stage'),
+            "detail": job.get('progress_detail'),
+        },
+        "student_briefing_id": job.get('student_briefing_id'),
+        "teacher_briefing_id": job.get('teacher_briefing_id'),
+        "error": error,
+    })
+
+
 @app.post("/api/briefing/send")
 async def api_briefing_send(
     request: Request,
     secret: str | None = None,
     variant: str | None = None,
     dry_run: bool = False,
+    send_after_complete: bool = True,
+    triggered_by: str = 'api',
 ):
-    """Manually trigger the Daily Briefing. Auth via Bearer token or ?secret=.
-
-    dry_run=true generates the requested variant's HTML and returns it in the
-    response instead of sending any email. Stories are day-cached, so student
-    and teacher dry runs on the same day share the same underlying stories."""
-    if secret != "cronkite2026":
-        auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Unauthorised")
-        token = auth_header.split(" ", 1)[1].strip()
-        try:
-            supa = get_supabase()
-            res = supa.auth.get_user(token)
-            if not res or not res.user:
-                raise HTTPException(status_code=401, detail="Unauthorised")
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(status_code=401, detail="Unauthorised")
-    import traceback
-    try:
-        if dry_run:
-            v = variant if variant in ('student', 'teacher') else 'student'
-            html = await generate_daily_briefing(v)
-            return {"status": "dry_run", "variant": v, "html": html}
-        sent = await run_daily_briefing()
-        return {"status": "sent", "subscribers": sent}
-    except Exception as exc:
-        logger.error(f"Briefing failed: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    """Legacy alias for /api/briefing/trigger. Generation now runs as a
+    background job, so this returns 202 with a job_id instead of blocking for
+    the full run. send_after_complete defaults to true here to preserve the
+    old endpoint's send-unless-dry-run semantics (dry_run still never emails).
+    `variant` is accepted for backward compatibility and ignored — both
+    variants are always generated."""
+    _authorise_briefing_request(request, secret)
+    return _briefing_trigger_response(triggered_by, send_after_complete, dry_run)
 
 
 # ── Read Article — scrape article content for the in-app reader ────────────────
